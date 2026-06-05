@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+    <!-- Tree -->
+    <record id="view_correspondent_line_tree" model="ir.ui.view">
+        <field name="name">correspondence.correspondent.line.tree</field>
+        <field name="model">correspondence.correspondent.line</field>
+        <field name="arch" type="xml">
+            <tree editable="bottom">
+                <field name="name"/>
+                <field name="shipment_method_ids" widget="many2many_tags"/>
+                <field name="full_name" optional="show"/>
+                <field name="position" optional="show"/>
+                <field name="address" optional="hide"/>
+                <field name="email" optional="show"/>
+                <field name="odoo_user_id" optional="hide"/>
+                <field name="phone" optional="hide"/>
+                <field name="active" invisible="1"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form -->
+    <record id="view_correspondent_line_form" model="ir.ui.view">
+        <field name="name">correspondence.correspondent.line.form</field>
+        <field name="model">correspondence.correspondent.line</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group string="Основное">
+                            <field name="name"/>
+                            <field name="shipment_method_ids" widget="many2many_tags"/>
+                            <field name="active"/>
+                        </group>
+                        <group string="Контактная информация">
+                            <field name="full_name"/>
+                            <field name="position"/>
+                            <field name="address"/>
+                            <field name="email"/>
+                            <field name="odoo_user_id"/>
+                            <field name="phone"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+</odoo>

@@ -1,0 +1,390 @@
+<odoo>
+
+    <!-- FORM (служебный, для activity / chatter) -->
+    <record id="view_assignment_line_form" model="ir.ui.view">
+        <field name="name">correspondence.assignment.line.form</field>
+        <field name="model">correspondence.assignment.line</field>
+        <field name="arch" type="xml">
+            <form string="Поручение" create="false" delete="false">
+                <sheet>
+
+                    <group>
+                        <field name="incoming_id" readonly="1"/>
+                        <field name="user_id" readonly="1"/>
+                        <field name="assigner_id" readonly="1"/>
+                    </group>
+
+                    <group>
+                        <field name="resolution_id" readonly="1"/>
+                        <field name="deadline" readonly="1"/>
+                        <field name="status" readonly="1"/>
+                    </group>
+
+                    <group>
+                        <field name="report"
+                               attrs="{'readonly': [('status','=','done')]}"/>
+                        <field name="attachment_ids" widget="many2many_binary"/>
+                    </group>
+
+                </sheet>
+
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- SERVER ACTION: открыть входящий документ -->
+    <record id="action_open_incoming_from_assignment" model="ir.actions.server">
+        <field name="name">Открыть входящий документ</field>
+        <field name="model_id" ref="model_correspondence_assignment_line"/>
+        <field name="state">code</field>
+        <field name="code">
+            action = {
+                'type': 'ir.actions.act_window',
+                'name': 'Входящий документ',
+                'res_model': 'corr.incoming',
+                'res_id': record.incoming_id.id,
+                'view_mode': 'form',
+                'target': 'current',
+            }
+        </field>
+    </record>
+
+    <!-- ACTION -->
+    <record id="action_correspondence_assignment_line" model="ir.actions.act_window">
+        <field name="name">Поручения</field>
+        <field name="res_model">correspondence.assignment.line</field>
+        <field name="view_mode">kanban,tree</field>
+    </record>
+
+    <!-- KANBAN -->
+
+    <record id="view_assignment_line_kanban" model="ir.ui.view">
+        <field name="name">correspondence.assignment.line.kanban</field>
+        <field name="model">correspondence.assignment.line</field>
+        <field name="arch" type="xml">
+            <kanban
+                create="false"
+                quick_create="false"
+                records_draggable="false"
+                class="o_kanban_small_column">
+
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card">
+
+                            <!-- КЛИКАБЕЛЬНАЯ ЗОНА -->
+                            <a type="action"
+                               name="%(action_open_incoming_from_assignment)d"
+                               class="d-block text-reset">
+
+                                <!-- номер входящего -->
+                                <div>
+                                    <strong>
+                                        <field name="incoming_id"/>
+                                    </strong>
+                                </div>
+
+                                <!-- статус документа -->
+                                <div class="text-muted">
+                                    <field name="incoming_state"/>
+                                </div>
+
+                                <!-- отправитель -->
+                                <!-- <div>
+                                    Отправитель документа:
+                                    <field name="incoming_partner_id"/>
+                                </div> -->
+
+                                <!-- краткое содержание -->
+                                <div>
+                                    <field name="incoming_summary_short"/>
+                                </div>
+
+                            </a>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+
+    <!-- TREE -->
+    <record id="view_assignment_line_tree" model="ir.ui.view">
+        <field name="name">correspondence.assignment.line.tree</field>
+        <field name="model">correspondence.assignment.line</field>
+        <field name="arch" type="xml">
+            <tree create="false" delete="false"
+                  decoration-danger="is_overdue"
+                  decoration-success="status == 'done'">
+                <field name="is_overdue" invisible="1"/>
+                <field name="incoming_id"/>
+                <field name="incoming_state"/>
+                <!-- <field name="incoming_partner_id"/> -->
+                <field name="user_id"/>
+                <field name="status"/>
+                <field name="deadline"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ============================================== -->
+    <!-- Отчётность по задачам                         -->
+    <!-- ============================================== -->
+
+    <!-- SEARCH с боковой панелью фильтров -->
+    <record id="view_assignment_line_report_search" model="ir.ui.view">
+        <field name="name">correspondence.assignment.line.report.search</field>
+        <field name="model">correspondence.assignment.line</field>
+        <field name="arch" type="xml">
+            <search string="Поиск по задачам">
+                <field name="user_id" string="Исполнитель"/>
+                <field name="assigner_id" string="Назначил"/>
+                <field name="incoming_id" string="Входящий документ"/>
+                <field name="resolution_id" string="Резолюция"/>
+                <filter name="filter_overdue" string="Просроченные"
+                        domain="[('deadline', '&lt;', context_today().strftime('%Y-%m-%d')), ('status', '!=', 'done')]"/>
+                <filter name="filter_report_needed" string="Требуется отчёт"
+                        domain="[('report_needed', '=', True)]"/>
+                <separator/>
+                <filter name="group_status" string="Статус"
+                        context="{'group_by': 'status'}"/>
+                <filter name="group_department" string="Подразделение"
+                        context="{'group_by': 'department_id'}"/>
+                <filter name="group_user" string="Исполнитель"
+                        context="{'group_by': 'user_id'}"/>
+                <searchpanel>
+                    <field name="status" icon="fa-tasks"
+                           select="one" enable_counters="1"/>
+                    <field name="department_id" icon="fa-building"
+                           select="multi" enable_counters="1"
+                           limit="0"/>
+                </searchpanel>
+            </search>
+        </field>
+    </record>
+
+    <!-- TREE для отчётности (расширенный) -->
+    <record id="view_assignment_line_report_tree" model="ir.ui.view">
+        <field name="name">correspondence.assignment.line.report.tree</field>
+        <field name="model">correspondence.assignment.line</field>
+        <field name="arch" type="xml">
+            <tree create="false" delete="false"
+                  decoration-danger="is_overdue"
+                  decoration-success="status == 'done'"
+                  decoration-muted="status == 'new'">
+                <field name="is_overdue" invisible="1"/>
+                <field name="incoming_id" string="Документ"/>
+                <field name="resolution_id" string="Резолюция"/>
+                <field name="user_id" string="Исполнитель" widget="many2one_avatar_user"/>
+                <field name="department_id" string="Подразделение" optional="show"/>
+                <field name="assigner_id" string="Назначил" widget="many2one_avatar_user" optional="hide"/>
+                <field name="status" string="Статус" widget="badge"
+                       decoration-info="status == 'new'"
+                       decoration-warning="status == 'in_progress'"
+                       decoration-success="status == 'done'"/>
+                <field name="deadline" string="Срок"/>
+                <field name="completion_datetime" string="Завершено" optional="show"/>
+                <field name="report_needed" string="Отчёт" optional="hide"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ACTION для отчётности -->
+    <record id="action_assignment_line_report" model="ir.actions.act_window">
+        <field name="name">Отчётность по задачам</field>
+        <field name="res_model">correspondence.assignment.line</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_assignment_line_report_search"/>
+        <field name="context">{'create': 0, 'search_default_filter_overdue': 0, 'search_default_group_status': 1}</field>
+    </record>
+
+    <record id="action_assignment_line_report_tree" model="ir.actions.act_window.view">
+        <field name="sequence">1</field>
+        <field name="view_mode">tree</field>
+        <field name="view_id" ref="view_assignment_line_report_tree"/>
+        <field name="act_window_id" ref="action_assignment_line_report"/>
+    </record>
+
+
+    <!-- ============================================== -->
+    <!-- Поручения (меню для сотрудников)              -->
+    <!-- ============================================== -->
+
+    <!-- SEARCH: Поручения -->
+    <record id="view_assignment_tasks_search" model="ir.ui.view">
+        <field name="name">correspondence.assignment.line.tasks.search</field>
+        <field name="model">correspondence.assignment.line</field>
+        <field name="arch" type="xml">
+            <search string="Поиск по поручениям">
+                <field name="user_id" string="Исполнитель"/>
+                <field name="assigner_id" string="Поручил"/>
+                <field name="incoming_id" string="Документ"/>
+                <field name="resolution_id" string="Резолюция"/>
+
+                <separator/>
+                <filter name="filter_assigned_to_me" string="Поручено мне"
+                        domain="[('user_id', '=', uid)]"/>
+                <filter name="filter_assigned_by_me" string="Поручено мной"
+                        domain="[('assigner_id', '=', uid)]"/>
+                <separator/>
+                <filter name="filter_overdue" string="Просроченные"
+                        domain="[('deadline', '&lt;', context_today().strftime('%Y-%m-%d')), ('status', '!=', 'done')]"/>
+                <filter name="filter_report_needed" string="Требуется отчёт"
+                        domain="[('report_needed', '=', True)]"/>
+                <separator/>
+                <filter name="group_status" string="Статус"
+                        context="{'group_by': 'status'}"/>
+                <filter name="group_department" string="Подразделение"
+                        context="{'group_by': 'department_id'}"/>
+                <filter name="group_user" string="Исполнитель"
+                        context="{'group_by': 'user_id'}"/>
+                <filter name="group_assigner" string="Поручил"
+                        context="{'group_by': 'assigner_id'}"/>
+
+                <searchpanel>
+                    <field name="status" icon="fa-tasks"
+                           select="one" enable_counters="1"/>
+                    <field name="department_id" icon="fa-building"
+                           select="multi" enable_counters="1"
+                           limit="0"/>
+                </searchpanel>
+            </search>
+        </field>
+    </record>
+
+    <!-- TREE: Поручения -->
+    <record id="view_assignment_tasks_tree" model="ir.ui.view">
+        <field name="name">correspondence.assignment.line.tasks.tree</field>
+        <field name="model">correspondence.assignment.line</field>
+        <field name="arch" type="xml">
+            <tree decoration-danger="is_overdue"
+                  decoration-success="status == 'done'"
+                  decoration-muted="status == 'new'"
+                  editable="bottom"
+                  delete="false"
+                  default_order="id desc">
+                <field name="is_overdue" invisible="1"/>
+                <field name="user_id" string="Исполнитель" widget="many2one_avatar_user"/>
+                <field name="task" string="Задача/комментарий"/>
+                <field name="resolution_id" string="Резолюция"/>
+                <field name="report_needed" string="Требует отчёт"/>
+                <field name="report" string="Отчет исполнителя"/>
+                <field name="attachment_ids" widget="many2many_binary" string="Документы"/>
+                <field name="status" string="Статус" />
+                <field name="deadline" string="Срок"/>
+                <field name="completion_datetime" string="Дата завершения" readonly="1"/>
+                <field name="assigner_id" string="Поручил" widget="many2one_avatar_user" readonly="1"/>
+                <field name="reassign_user_id" string="Переназначить"/>
+                <field name="executor_history_ids" string="История исполнителей"
+                       widget="many2many_tags" readonly="1"/>
+                <field name="incoming_id" string="Документ" optional="show" readonly="1"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- FORM: Поручения (расширенная для создания/редактирования) -->
+    <record id="view_assignment_tasks_form" model="ir.ui.view">
+        <field name="name">correspondence.assignment.line.tasks.form</field>
+        <field name="model">correspondence.assignment.line</field>
+        <field name="priority">20</field>
+        <field name="arch" type="xml">
+            <form string="Поручение">
+                <sheet>
+                    <group>
+                        <group string="Основное">
+                            <field name="user_id" string="Исполнитель"/>
+                            <field name="resolution_id" string="Резолюция"/>
+                            <field name="deadline" string="Срок"/>
+                            <field name="report_needed" string="Требует отчёт"/>
+                            <field name="status" string="Статус" widget="badge"
+                                   decoration-info="status == 'new'"
+                                   decoration-warning="status == 'in_progress'"
+                                   decoration-success="status == 'done'"/>
+                            <field name="completion_datetime" string="Дата завершения"
+                                   readonly="1"
+                                   attrs="{'invisible': [('status', '!=', 'done')]}"/>
+                        </group>
+                        <group string="Назначение">
+                            <field name="assigner_id" string="Поручил" readonly="1"/>
+                            <field name="reassign_user_id" string="Переназначить"
+                                   attrs="{'invisible': [('status', '=', 'done')]}"/>
+                            <field name="executor_history_ids" string="История исполнителей"
+                                   widget="many2many_tags" readonly="1"/>
+                            <field name="incoming_id" string="Документ" readonly="1"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Отчёт исполнителя"
+                              attrs="{'invisible': [('report_needed', '=', False)]}">
+                            <field name="report"
+                                   attrs="{'readonly': [('status','=','done')]}"/>
+                            <field name="attachment_ids" widget="many2many_binary"
+                                   string="Документы"/>
+                        </page>
+                    </notebook>
+                </sheet>
+
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- ACTION: Поручения (для сотрудников — видят свои) -->
+    <record id="action_assignment_tasks_employee" model="ir.actions.act_window">
+        <field name="name">Поручения</field>
+        <field name="res_model">correspondence.assignment.line</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_assignment_tasks_search"/>
+        <field name="domain">['|', '|', ('user_id', '=', uid), ('assigner_id', '=', uid), ('executor_history_ids', 'in', uid)]</field>
+        <field name="context">{'search_default_filter_assigned_to_me': 1, 'search_default_group_status': 1}</field>
+    </record>
+
+    <record id="action_assignment_tasks_employee_tree" model="ir.actions.act_window.view">
+        <field name="sequence">1</field>
+        <field name="view_mode">tree</field>
+        <field name="view_id" ref="view_assignment_tasks_tree"/>
+        <field name="act_window_id" ref="action_assignment_tasks_employee"/>
+    </record>
+
+    <record id="action_assignment_tasks_employee_form" model="ir.actions.act_window.view">
+        <field name="sequence">2</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="view_assignment_tasks_form"/>
+        <field name="act_window_id" ref="action_assignment_tasks_employee"/>
+    </record>
+
+    <!-- ACTION: Поручения (для admin/director/secretary — видят все) -->
+    <record id="action_assignment_tasks_all" model="ir.actions.act_window">
+        <field name="name">Поручения</field>
+        <field name="res_model">correspondence.assignment.line</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_assignment_tasks_search"/>
+        <field name="context">{'search_default_group_status': 1}</field>
+    </record>
+
+    <record id="action_assignment_tasks_all_tree" model="ir.actions.act_window.view">
+        <field name="sequence">1</field>
+        <field name="view_mode">tree</field>
+        <field name="view_id" ref="view_assignment_tasks_tree"/>
+        <field name="act_window_id" ref="action_assignment_tasks_all"/>
+    </record>
+
+    <record id="action_assignment_tasks_all_form" model="ir.actions.act_window.view">
+        <field name="sequence">2</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="view_assignment_tasks_form"/>
+        <field name="act_window_id" ref="action_assignment_tasks_all"/>
+    </record>
+
+</odoo>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+    <!-- Tree -->
+    <record id="view_resolution_option_tree" model="ir.ui.view">
+        <field name="name">correspondence.resolution.option.tree</field>
+        <field name="model">correspondence.resolution.option</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="days_for_completion"/>
+                <field name="report_needed"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form -->
+    <record id="view_resolution_option_form" model="ir.ui.view">
+        <field name="name">correspondence.resolution.option.form</field>
+        <field name="model">correspondence.resolution.option</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="active"/>
+                        </group>
+                        <group>
+                            <field name="days_for_completion"/>
+                            <field name="report_needed"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_resolution_option" model="ir.actions.act_window">
+        <field name="name">Резолюции</field>
+        <field name="res_model">correspondence.resolution.option</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+</odoo>

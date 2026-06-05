@@ -1,0 +1,526 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================== -->
+    <!-- Tree View                                      -->
+    <!-- ============================================== -->
+    <record id="view_corr_outgoing_tree" model="ir.ui.view">
+        <field name="name">corr.outgoing.tree</field>
+        <field name="model">corr.outgoing</field>
+        <field name="arch" type="xml">
+            <tree create="true" delete="false">
+                <field name="name"/>
+                <field name="subject"/>
+                <field name="create_uid" string="Инициатор"/>
+                <field name="create_date" string="Дата создания"/>
+                <field name="state" widget="badge" 
+                       decoration-info="state == 'draft'" 
+                       decoration-warning="state in ('under_approval', 'approval', 'approval_medical_examination', 'processing')"
+                       decoration-primary="state == 'review'"
+                       decoration-success="state == 'done'"
+                       decoration-danger="state in ('rejected', 'canceled')"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ============================================== -->
+    <!-- Kanban View                                    -->
+    <!-- ============================================== -->
+    <record id="view_corr_outgoing_kanban" model="ir.ui.view">
+        <field name="name">corr.outgoing.kanban</field>
+        <field name="model">corr.outgoing</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_mobile">
+                <field name="name"/>
+                <field name="subject"/>
+                <field name="create_uid"/>
+                <field name="state"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div t-attf-class="oe_kanban_global_click">
+                            <div class="oe_kanban_details">
+                                <strong class="o_kanban_record_title">
+                                    <field name="name"/>
+                                </strong>
+                                <div class="o_kanban_record_subtitle">
+                                    <field name="state" widget="badge" 
+                                           decoration-info="state == 'draft'" 
+                                           decoration-warning="state in ('under_approval', 'approval', 'approval_medical_examination', 'processing')"
+                                           decoration-primary="state == 'review'"
+                                           decoration-success="state == 'done'"
+                                           decoration-danger="state in ('rejected', 'canceled')"/>
+                                </div>
+                                <div>Тема: <field name="subject"/></div>
+                                <div>Инициатор: <field name="create_uid"/></div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- ============================================== -->
+    <!-- Form View                                      -->
+    <!-- ============================================== -->
+    <record id="view_corr_outgoing_form" model="ir.ui.view">
+        <field name="name">corr.outgoing.form</field>
+        <field name="model">corr.outgoing</field>
+        <field name="arch" type="xml">
+            <form string="Исходящая корреспонденция">
+
+                <header>
+                    <!-- ========================================= -->
+                    <!-- Кнопка: На согласование (draft)           -->
+                    <!-- ========================================= -->
+                    <button name="action_send_to_approval"
+                            string="На согласование"
+                            type="object"
+                            class="btn-primary"
+                            attrs="{'invisible': [('state', '!=', 'draft')]}"
+                            groups="correspondence.group_correspondence_employee,correspondence.group_correspondence_secretary,correspondence.group_correspondence_director,correspondence.group_correspondence_admin"/>
+
+                    <!-- ========================================= -->
+                    <!-- Кнопки согласования                       -->
+                    <!-- ========================================= -->
+                    
+                    <!-- Согласовать (under_approval, без ЭЦП) -->
+                    <button name="action_approve"
+                            string="Согласовать"
+                            type="object"
+                            class="btn-primary"
+                            attrs="{'invisible': ['|', '|', ('button_approve_enabled', '=', False), ('state', '!=', 'under_approval'), ('user_esp', '=', True)]}"
+                            confirm="Подтвердить согласование?"/>
+
+                    <!-- Утвердить с ЭЦП (approval) - виджет для NCALayer -->
+                    <widget name="sign_esp" 
+                            string="Утвердить с ЭЦП" 
+                            highlight="True"
+                            attrs="{'invisible': ['|', '|', ('button_approve_enabled', '=', False), ('state', '!=', 'approval'), ('user_esp', '=', False)]}"/>
+
+                    <!-- Подписать с ЭЦП (approval_medical_examination) - виджет для NCALayer -->
+                    <widget name="sign_esp" 
+                            string="Подписать с ЭЦП" 
+                            highlight="True"
+                            attrs="{'invisible': ['|', '|', ('button_approve_enabled', '=', False), ('state', '!=', 'approval_medical_examination'), ('user_esp', '=', False)]}"/>
+
+                    <!-- Отказаться от мед. освидетельствования (только для employee_id) -->
+                    <button name="action_refuse_medical_examination"
+                            string="Отказаться от мед. освидетельствования"
+                            type="object"
+                            class="btn-warning"
+                            attrs="{'invisible': [('is_employee_signer', '=', False)]}"
+                            confirm="Вы уверены, что хотите отказаться от прохождения медицинского освидетельствования?"/>
+
+                    <!-- Обработано (processing) -->
+                    <button name="action_approve"
+                            string="Обработано"
+                            type="object"
+                            class="btn-primary"
+                            attrs="{'invisible': ['|', ('button_approve_enabled', '=', False), ('state', '!=', 'processing')]}"
+                            confirm="Подтвердить обработку?"/>
+
+                    <!-- Ознакомлен (review, только инициатор) -->
+                    <button name="action_acknowledge"
+                            string="Ознакомлен"
+                            type="object"
+                            class="btn-primary"
+                            attrs="{'invisible': ['|', ('state', '!=', 'review'), ('is_initiator', '=', False)]}"
+                            confirm="Подтвердить ознакомление?"/>
+
+                    <!-- ========================================= -->
+                    <!-- Кнопки возврата и отклонения              -->
+                    <!-- ========================================= -->
+
+                    <!-- Вернуть на доработку (under_approval, approval, approval_medical_examination) -->
+                    <button name="action_return"
+                            string="Вернуть на доработку"
+                            type="object"
+                            class="btn-warning"
+                            attrs="{'invisible': ['|', ('button_return_enabled', '=', False), ('state', 'not in', ['under_approval', 'approval', 'approval_medical_examination'])]}"
+                            context="{'fixed_return_state': 'draft'}"/>
+
+                    <!-- Отклонить (under_approval, approval, approval_medical_examination) - для согласующих, кроме employee -->
+                    <button name="action_reject_wizard"
+                            string="Отклонить"
+                            type="object"
+                            class="btn-danger"
+                            attrs="{'invisible': ['|', '|', ('button_approve_enabled', '=', False), ('state', 'not in', ['under_approval', 'approval', 'approval_medical_examination']), ('is_employee_signer', '=', True)]}"/>
+
+                    <!-- Отменить (draft, under_approval, approval) - для инициатора -->
+                    <button name="action_cancel_document"
+                            string="Отменить"
+                            type="object"
+                            class="btn-danger"
+                            attrs="{'invisible': [('can_cancel', '=', False)]}"
+                            confirm="Вы уверены, что хотите отменить документ?"/>
+
+                    <!-- ========================================= -->
+                    <!-- Кнопки скачивания отчётов                 -->
+                    <!-- ========================================= -->
+                    <button name="download_report_pdf"
+                            string="Скачать PDF"
+                            type="object"
+                            class="btn-secondary"
+                            icon="fa-file-pdf-o"
+                            attrs="{'invisible': [('state', 'not in', ['processing', 'done', 'review'])]}"/>
+                    <button name="download_report_docx"
+                            string="Скачать DOCX"
+                            type="object"
+                            class="btn-secondary"
+                            icon="fa-file-word-o"
+                            attrs="{'invisible': [('state', 'not in', ['processing', 'done', 'review'])]}"/>
+
+                    <!-- ========================================= -->
+                    <!-- Statusbar                                 -->
+                    <!-- ========================================= -->
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,under_approval,processing,review,done"/>
+                </header>
+
+                <sheet>
+                    <!-- ========================================= -->
+                    <!-- Информационные баннеры                    -->
+                    <!-- ========================================= -->
+                    
+                    <!-- Баннер: Ожидание согласования -->
+                    <div class="alert alert-info" role="alert"
+                         attrs="{'invisible': ['|', ('state', '!=', 'under_approval'), ('button_approve_enabled', '=', True)]}">
+                        <strong>Ожидание согласования.</strong> Документ находится на согласовании у других пользователей.
+                    </div>
+
+                    <!-- Баннер: Требуется ваше согласование -->
+                    <div class="alert alert-warning" role="alert"
+                         attrs="{'invisible': ['|', ('state', '!=', 'under_approval'), ('button_approve_enabled', '=', False)]}">
+                        <strong>Требуется ваше согласование!</strong> Нажмите кнопку "Согласовать" для продолжения.
+                    </div>
+
+                    <!-- Баннер: Ожидание утверждения -->
+                    <div class="alert alert-info" role="alert"
+                         attrs="{'invisible': ['|', ('state', '!=', 'approval'), ('button_approve_enabled', '=', True)]}">
+                        <strong>Ожидание утверждения.</strong> Документ ожидает утверждения и подписания ЭЦП.
+                    </div>
+
+                    <!-- Баннер: Требуется утверждение с ЭЦП -->
+                    <div class="alert alert-danger" role="alert"
+                         attrs="{'invisible': ['|', ('state', '!=', 'approval'), ('button_approve_enabled', '=', False)]}">
+                        <strong>Требуется ваша подпись с ЭЦП!</strong> Нажмите кнопку "Утвердить с ЭЦП" для подписания документа.
+                    </div>
+
+                    <!-- Баннер: Ожидание подписания (мед. освидетельствование) -->
+                    <div class="alert alert-info" role="alert"
+                         attrs="{'invisible': ['|', ('state', '!=', 'approval_medical_examination'), ('button_approve_enabled', '=', True)]}">
+                        <strong>Подписание (мед. освидетельствование).</strong> Документ ожидает подписания ЭЦП участниками.
+                    </div>
+
+                    <!-- Баннер: Требуется подпись с ЭЦП (мед. освидетельствование) -->
+                    <div class="alert alert-info" role="alert"
+                         attrs="{'invisible': ['|', ('state', '!=', 'approval_medical_examination'), ('button_approve_enabled', '=', False)]}">
+                        <strong>Требуется ваша подпись с ЭЦП.</strong> Нажмите кнопку "Подписать с ЭЦП" для подписания документа.
+                    </div>
+
+                    <!-- Баннер: Ожидание обработки -->
+                    <div class="alert alert-info" role="alert"
+                         attrs="{'invisible': ['|', ('state', '!=', 'processing'), ('button_approve_enabled', '=', True)]}">
+                        <strong>Обработка.</strong> Документ ожидает обработки ответственным сотрудником.
+                    </div>
+
+                    <!-- Баннер: Требуется обработка -->
+                    <div class="alert alert-warning" role="alert"
+                         attrs="{'invisible': ['|', ('state', '!=', 'processing'), ('button_approve_enabled', '=', False)]}">
+                        <strong>Требуется ваша обработка.</strong> Внесите данные в учётную систему и нажмите "Обработано".
+                    </div>
+
+                    <!-- Баннер: Ознакомление (для инициатора) -->
+                    <div class="alert alert-success" role="alert"
+                         attrs="{'invisible': ['|', ('state', '!=', 'review'), ('is_initiator', '=', False)]}">
+                        <strong>Документ подписан.</strong> Ознакомьтесь с результатом, отправьте исходящее письмо и нажмите "Ознакомлен" для завершения.
+                    </div>
+
+                    <!-- Баннер: Ожидание ознакомления (для не-инициатора) -->
+                    <div class="alert alert-info" role="alert"
+                         attrs="{'invisible': ['|', ('state', '!=', 'review'), ('is_initiator', '=', True)]}">
+                        <strong>Ознакомление.</strong> Документ ожидает ознакомления и отправки письма инициатором.
+                    </div>
+
+                    <!-- ========================================= -->
+                    <!-- Основная информация                       -->
+                    <!-- ========================================= -->
+                    <group>
+                        <group string="Основная информация">
+                            <field name="name" readonly="1"/>
+                            <field name="type_id" attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                            <field name="subject" attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                            <field name="language" attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                            <field name="incoming_id" attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                            <field name="create_uid" string="Инициатор" readonly="1"/>
+                            <field name="create_date" string="Дата создания" readonly="1"/>
+                        </group>
+                        <group string="Согласование">
+                            <field name="esp_signer_id" 
+                                    attrs="{'readonly': [('state', '!=', 'draft')]}"
+                                    options="{'no_create': True}"
+                                    placeholder="Выберите утверждающего..."/>
+                            <field name="additional_approver_ids"
+                                    widget="many2many_tags"
+                                    attrs="{'readonly': [('state', '!=', 'draft')]}"
+                                    options="{'no_create': True}"
+                                    placeholder="Выберите согласующих..."/>
+                        </group>
+                    </group>
+
+                    <group string="Краткое содержание письма">
+                        <field name="summary" colspan="2" nolabel="1"
+                               attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                    </group>
+
+
+                    <!-- Скрытые поля для условий видимости -->
+                    <field name="button_approve_enabled" invisible="1"/>
+                    <field name="button_return_enabled" invisible="1"/>
+                    <field name="user_can_approve" invisible="1"/>
+                    <field name="user_esp" invisible="1"/>
+                    <field name="is_initiator" invisible="1"/>
+                    <field name="can_cancel" invisible="1"/>
+                    <field name="is_employee_signer" invisible="1"/>
+                    <field name="show_main_attachment" invisible="1"/>
+
+                    <!-- ========================================= -->
+                    <!-- Вложения                                  -->
+                    <!-- ========================================= -->
+                    <group>
+                        <group string="Вложения">
+                            <field name="attachment_to_sign_ids"
+                                   widget="many2many_binary"
+                                   string="Исходящее письмо для подписания"
+                                   attrs="{'readonly': [('state', 'not in', ['draft'])],
+                                           'invisible': [('show_main_attachment', '=', False)],
+                                           'required': [('show_main_attachment', '=', True)]}"/>
+
+                            <field name="attachment_additional_sign_ids"
+                                   widget="many2many_binary"
+                                   string="Дополнительные документы для подписания"
+                                   attrs="{'readonly': [('state', 'not in', ['draft'])]}"/>
+
+                            <field name="attachment_extra_ids"
+                                   widget="many2many_binary"
+                                   string="Прочие документы без подписи"
+                                   attrs="{'readonly': [('state', 'not in', ['draft'])]}"/>
+                        </group>
+                    </group>
+
+                    <!-- ========================================= -->
+                    <!-- Notebook: Согласование                    -->
+                    <!-- ========================================= -->
+                    
+                    <!-- Скрытое поле для видимости вкладки Информация письма -->
+                    <field name="show_simple" invisible="1"/>
+                    <field name="show_explanation" invisible="1"/>
+                    <field name="show_medical_examination" invisible="1"/>
+                    <field name="show_medical_checkup" invisible="1"/>
+                    <field name="show_change_conditions" invisible="1"/>
+                    <field name="show_job_offer" invisible="1"/>
+                    <field name="show_reference" invisible="1"/>
+                    <field name="show_guarantee" invisible="1"/>
+                    <field name="show_rus_fields" invisible="1"/>
+                    <field name="show_kaz_fields" invisible="1"/>
+                    <field name="show_employee_fields" invisible="1"/>
+
+                    
+                    <notebook>
+                        <!-- Вкладка: Информация письма -->
+                        <page string="Информация письма" name="info_letter"
+                            attrs="{'invisible': [('show_main_attachment', '=', True)]}">
+                            <group> <!-- Общая информация -->
+                                <field name="employee_id" attrs="{'invisible': [('show_employee_fields', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="employee_job_id" attrs="{'invisible': [('show_employee_fields', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                            </group>
+                            <group> <!-- медицинский осмотр -->
+                                <field name="medical_checkup_date" attrs="{'invisible': [('show_medical_checkup', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="checkup_time" attrs="{'invisible': [('show_medical_checkup', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="clinic" attrs="{'invisible': [('show_medical_checkup', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="clinic_address" attrs="{'invisible': [('show_medical_checkup', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="additional_screenings" attrs="{'invisible': [('show_medical_checkup', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="reason_for_checkup_additional_screenings_kaz" attrs="{'invisible': ['|', ('show_medical_checkup', '=', False), ('additional_screenings', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="reason_for_checkup_additional_screenings_rus" attrs="{'invisible': ['|', ('show_medical_checkup', '=', False), ('additional_screenings', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                            </group> 
+                            <group> <!-- Объяснительная -->
+                                <field name="explanatory_note_text_kaz" attrs="{'invisible': [('show_explanation', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="explanatory_note_text_rus" attrs="{'invisible': [('show_explanation', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="text_attachments_kaz" attrs="{'invisible': [('show_explanation', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="text_attachments_rus" attrs="{'invisible': [('show_explanation', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                            </group>
+                            <group> <!-- медицинское освидетельствование -->
+                                <field name="employee_identification_id" attrs="{'invisible': [('show_medical_examination', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="employee_udo_number" attrs="{'invisible': [('show_medical_examination', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="employee_udo_issuing_authority" attrs="{'invisible': [('show_medical_examination', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="employee_udo_issuing_date" attrs="{'invisible': [('show_medical_examination', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="act_number" attrs="{'invisible': [('show_medical_examination', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="act_date" attrs="{'invisible': [('show_medical_examination', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="reason_for_medical_examination_rus" attrs="{'invisible': ['|', ('show_medical_examination', '=', False), ('show_rus_fields', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="reason_for_medical_examination_kaz" attrs="{'invisible': ['|', ('show_medical_examination', '=', False), ('show_kaz_fields', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="medical_worker_id" attrs="{'invisible': [('show_medical_examination', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="medical_assessment_refusal" attrs="{'invisible': ['|', ('show_medical_examination', '=', False), ('medical_assessment_refusal', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                            </group>
+                            <group> <!-- Предложение о работе -->
+                                <field name="candidate_name" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="candidate_email" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="candidate_phone" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="job_offer_position_id" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="custom_salary_bool" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="salary" attrs="{'invisible': ['|', ('show_job_offer', '=', False), ('custom_salary_bool', '=', True)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="custom_salary" attrs="{'invisible': ['|', ('show_job_offer', '=', False), ('custom_salary_bool', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="time_type" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="part_time_hours" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="working_hours" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="work_start_date" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="contract_period" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="trial_period" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="holiday_days" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="additional_info_1" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="additional_info_2" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="offer_end_date" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="contact_phone" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="contact_email" attrs="{'invisible': [('show_job_offer', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                            </group>
+                            <group> <!-- Справка с места работы -->
+                                <field name="employee_identification_id" attrs="{'invisible': [('show_reference', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="employee_contract_date" attrs="{'invisible': [('show_reference', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="work_schedule_needed" attrs="{'invisible': [('show_reference', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="salary_needed" attrs="{'invisible': [('show_reference', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="vacation_start_date" attrs="{'invisible': ['|', ('show_reference', '=', False), ('show_rus_fields', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="vacation_end_date" attrs="{'invisible': ['|', ('show_reference', '=', False), ('show_rus_fields', '=', False)], 'readonly': [('state', '!=', 'draft')]}"/>
+                            </group>
+                        </page>
+                        <!-- Вкладка: Получатели письма -->
+                        <page string="Получатели письма" name="recipients">
+                            <field name="correspondent_line_ids" nolabel="1" colspan="2"
+                                attrs="{'readonly': [('state', '!=', 'draft')]}">
+                                <tree editable="bottom">
+                                    <field name="name" width="200px"/>
+                                    <field name="shipment_method_ids" widget="many2many_tags" options="{'no_create': True}" width="250px"/>
+                                    <field name="full_name" width="180px"/>
+                                    <field name="address" width="200px"/>
+                                    <field name="position" width="150px"/>
+                                    <field name="email" width="180px"/>
+                                    <field name="odoo_user_id" width="180px"/>
+                                    <field name="phone" width="150px"/>
+                                </tree>
+                            </field>
+                        </page>
+
+                        <!-- Вкладка: Текущие согласующие -->
+                        <page string="Согласующие" name="approvers"
+                              attrs="{'invisible': [('state', 'in', ['draft', 'done', 'rejected', 'canceled'])]}">
+                            <field name="state_agreement_line_ids" readonly="1">
+                                <tree decoration-success="status == 'agreed'"
+                                      decoration-warning="status == 'in_progress'"
+                                      decoration-muted="status == 'waiting'"
+                                      decoration-danger="status == 'rejected'">
+                                    <field name="sequence" string="№"/>
+                                    <field name="user_id"/>
+                                    <field name="job_id"/>
+                                    <field name="status"/>
+                                    <field name="need_esp" string="ЭЦП"/>
+                                    <field name="agreement_date"/>
+                                    <field name="commentary"/>
+                                </tree>
+                            </field>
+                        </page>
+
+                        <!-- Вкладка: История согласований -->
+                        <page string="История согласований" name="approval_history">
+                            <field name="state_agreement_history_line_ids" readonly="1">
+                                <tree>
+                                    <field name="user_id"/>
+                                    <field name="job_id"/>
+                                    <field name="status"/>
+                                    <field name="agreement_date"/>
+                                    <field name="commentary"/>
+                                    <field name="signed" widget="boolean"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+
+                </sheet>
+
+                <!-- ========================================= -->
+                <!-- Chatter                                   -->
+                <!-- ========================================= -->
+                <div class="o_attachment_preview"/>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================================== -->
+    <!-- Search View                                    -->
+    <!-- ============================================== -->
+    <record id="view_corr_outgoing_search" model="ir.ui.view">
+        <field name="name">corr.outgoing.search</field>
+        <field name="model">corr.outgoing</field>
+        <field name="arch" type="xml">
+            <search string="Исходящая корреспонденция">
+                <field name="name"/>
+                <field name="subject"/>
+                <field name="create_uid" string="Инициатор"/>
+                <separator/>
+                <filter string="Мои документы" name="my_documents" 
+                        domain="[('create_uid', '=', uid)]"/>
+                <filter string="На моём согласовании" name="my_approval"
+                        domain="[('approval_user_ids', 'in', uid)]"/>
+                <separator/>
+                <filter string="Черновик" name="state_draft" domain="[('state', '=', 'draft')]"/>
+                <filter string="Согласование" name="state_under_approval" domain="[('state', '=', 'under_approval')]"/>
+                <filter string="Утверждение" name="state_approval" domain="[('state', '=', 'approval')]"/>
+                <filter string="Обработка" name="state_processing" domain="[('state', '=', 'processing')]"/>
+                <filter string="Ознакомление" name="state_review" domain="[('state', '=', 'review')]"/>
+                <filter string="Закрыто" name="state_done" domain="[('state', '=', 'done')]"/>
+                <filter string="Отклонено" name="state_rejected" domain="[('state', '=', 'rejected')]"/>
+                <filter string="Отменено" name="state_canceled" domain="[('state', '=', 'canceled')]"/>
+                <separator/>
+                <group expand="0" string="Группировка">
+                    <filter string="Статус" name="group_state" context="{'group_by': 'state'}"/>
+                    <filter string="Инициатор" name="group_initiator" context="{'group_by': 'create_uid'}"/>
+                    <filter string="Дата создания" name="group_date" context="{'group_by': 'create_date:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ============================================== -->
+    <!-- Actions                                        -->
+    <!-- ============================================== -->
+    
+    <!-- Action для Employee: видит свои + additional_approver + история + текущие согласующие -->
+    <record id="action_corr_outgoing_employee" model="ir.actions.act_window">
+        <field name="name">Исходящая корреспонденция</field>
+        <field name="res_model">corr.outgoing</field>
+        <field name="view_mode">tree,kanban,form</field>
+        <field name="domain">['|', '|', '|', ('create_uid', '=', uid), ('additional_approver_ids', 'in', uid), ('state_agreement_history_line_ids.user_id', '=', uid), ('state_agreement_line_ids.user_id', '=', uid)]</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Создайте первый исходящий документ
+            </p>
+        </field>
+    </record>
+
+    <!-- Action для Secretary/Director/Admin: видят все -->
+    <record id="action_corr_outgoing" model="ir.actions.act_window">
+        <field name="name">Исходящая корреспонденция</field>
+        <field name="res_model">corr.outgoing</field>
+        <field name="view_mode">tree,kanban,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Создайте первый исходящий документ
+            </p>
+        </field>
+    </record>
+
+</odoo>

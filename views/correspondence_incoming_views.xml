@@ -1,0 +1,348 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================== -->
+    <!-- Tree View                                      -->
+    <!-- ============================================== -->
+    <record id="view_corr_incoming_tree" model="ir.ui.view">
+        <field name="name">corr.incoming.tree</field>
+        <field name="model">corr.incoming</field>
+        <field name="arch" type="xml">
+            <tree delete="false">
+                <field name="name"/>
+                <field name="subject"/>
+                <!-- <field name="partner_id"/> -->
+                <field name="doc_arrival_date"/>
+                <field name="create_uid" string="Инициатор"/>
+                <field name="assignment_count" string="Заданий"/>
+                <field name="state" widget="badge" decoration-info="state == 'draft'" 
+                       decoration-warning="state in ('review', 'revision')"
+                       decoration-primary="state in ('execution', 'rework')"
+                       decoration-success="state == 'done'"
+                       decoration-danger="state == 'canceled'"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ============================================== -->
+    <!-- Kanban View                                    -->
+    <!-- ============================================== -->
+    <record id="view_corr_incoming_kanban" model="ir.ui.view">
+        <field name="name">corr.incoming.kanban</field>
+        <field name="model">corr.incoming</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_mobile">
+                <field name="name"/>
+                <field name="subject"/>
+                <!-- <field name="partner_id"/> -->
+                <field name="doc_arrival_date"/>
+                <field name="state"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div t-attf-class="oe_kanban_global_click">
+                            <div class="oe_kanban_details">
+                                <strong class="o_kanban_record_title">
+                                    <field name="name"/>
+                                </strong>
+                                <div class="o_kanban_record_subtitle">
+                                    <field name="state" widget="badge" 
+                                           decoration-info="state == 'draft'" 
+                                           decoration-warning="state in ('review', 'revision')"
+                                           decoration-primary="state in ('execution', 'rework')"
+                                           decoration-success="state == 'done'"
+                                           decoration-danger="state == 'canceled'"/>
+                                </div>
+                                <div>Тема: <field name="subject"/></div>
+                                <!-- <div>Отправитель: <field name="partner_id"/></div> -->
+                                <div>Дата: <field name="doc_arrival_date"/></div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- ============================================== -->
+    <!-- Form View                                      -->
+    <!-- ============================================== -->
+    <record id="view_corr_incoming_form" model="ir.ui.view">
+        <field name="name">corr.incoming.form</field>
+        <field name="model">corr.incoming</field>
+        <field name="arch" type="xml">
+            <form string="Входящая корреспонденция">
+
+                <header>
+                    <!-- ========================================= -->
+                    <!-- Кнопка: На согласование (draft/revision)  -->
+                    <!-- ========================================= -->
+                    <button name="action_send_to_approval"
+                            string="На согласование"
+                            type="object"
+                            class="btn-primary"
+                            attrs="{'invisible': [('state', 'not in', ['draft', 'revision'])]}"
+                            groups="correspondence.group_correspondence_secretary,correspondence.group_correspondence_director,correspondence.group_correspondence_admin"/>
+
+                    <!-- ========================================= -->
+                    <!-- Кнопки appstream_approval (согласование)  -->
+                    <!-- ========================================= -->
+                    
+                    <!-- Согласовать -->
+                    <button name="action_approve"
+                            string="Согласовать"
+                            type="object"
+                            class="btn-primary"
+                            attrs="{'invisible': ['|', ('button_approve_enabled', '=', False), ('state', 'in', ['draft', 'revision', 'execution', 'rework', 'done', 'canceled'])]}"
+                            confirm="Подтвердить согласование?"/>
+
+                    <!-- Вернуть на доработку (review → revision) -->
+                    <button name="action_return"
+                            string="Вернуть на доработку"
+                            type="object"
+                            class="btn-warning"
+                            attrs="{'invisible': ['|', ('button_return_enabled', '=', False), ('state', '!=', 'review')]}"
+                            context="{'fixed_return_state': 'revision'}"
+                            groups="correspondence.group_correspondence_director,correspondence.group_correspondence_admin"/>
+
+                    <!-- Закрыть (review → done) когда нет заданий -->
+                    <button name="action_close_document"
+                            string="Закрыть"
+                            type="object"
+                            class="btn-success"
+                            attrs="{'invisible': [('state', '!=', 'review')]}"
+                            confirm="Закрыть документ без создания заданий?"
+                            groups="correspondence.group_correspondence_director,correspondence.group_correspondence_admin"/>
+
+                    <!-- ========================================= -->
+                    <!-- Кнопка: На доработку задач (done)         -->
+                    <!-- ========================================= -->
+                    <button name="action_open_rework_wizard"
+                            string="На доработку задач"
+                            type="object"
+                            class="btn-warning"
+                            attrs="{'invisible': [('state', '!=', 'done')]}"
+                            groups="correspondence.group_correspondence_director,correspondence.group_correspondence_secretary,correspondence.group_correspondence_admin"/>
+
+                    <!-- ========================================= -->
+                    <!-- Statusbar                                 -->
+                    <!-- ========================================= -->
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,review,execution,done"/>
+                </header>
+
+                <sheet>
+                    <!-- ========================================= -->
+                    <!-- Информационные баннеры                    -->
+                    <!-- ========================================= -->
+                    
+                    <!-- Баннер: Ожидание согласования -->
+                    <div class="alert alert-info" role="alert"
+                         attrs="{'invisible': ['|', ('state', '!=', 'review'), ('button_approve_enabled', '=', True)]}">
+                        <strong>Ожидание согласования.</strong> Документ находится на согласовании у других пользователей.
+                    </div>
+
+                    <!-- Баннер: Ваша очередь согласовать -->
+                    <div class="alert alert-warning" role="alert"
+                         attrs="{'invisible': ['|', ('state', '!=', 'review'), ('button_approve_enabled', '=', False)]}">
+                        <strong>Требуется ваше согласование!</strong> Нажмите кнопку "Согласовать" для продолжения.
+                    </div>
+
+                    <!-- Баннер: Исполнение -->
+                    <div class="alert alert-info" role="alert"
+                         attrs="{'invisible': [('state', '!=', 'execution')]}">
+                        <strong>Исполнение.</strong> Документ завершится автоматически, когда все задания будут выполнены.
+                    </div>
+
+                    <!-- Баннер: Доработка задач -->
+                    <div class="alert alert-warning" role="alert"
+                         attrs="{'invisible': [('state', '!=', 'rework')]}">
+                        <strong>Доработка задач.</strong> После выполнения всех заданий документ завершится.
+                    </div>
+
+                    <!-- Баннер: Доработка заявки -->
+                    <div class="alert alert-warning" role="alert"
+                         attrs="{'invisible': [('state', '!=', 'revision')]}">>
+                        <strong>Доработка заявки.</strong> Внесите исправления и отправьте повторно на согласование.
+                    </div>
+
+                    <!-- ========================================= -->
+                    <!-- Основная информация                       -->
+                    <!-- ========================================= -->
+                    <group>
+                        <group string="Документ">
+                            <field name="name" readonly="1"/>
+                            <field name="subject" attrs="{'readonly': [('state', 'not in', ['draft', 'revision'])]}"/>
+                            <!-- <field name="partner_id" attrs="{'readonly': [('state', 'not in', ['draft', 'revision'])]}"/> -->
+                            <field name="doc_arrival_date" attrs="{'readonly': [('state', 'not in', ['draft', 'revision'])]}"/>
+                            <field name="language" attrs="{'readonly': [('state', 'not in', ['draft', 'revision'])]}"/>
+                            <field name="external_number" attrs="{'readonly': [('state', 'not in', ['draft', 'revision'])]}"/>
+                            <field name="shipment_method_ids" widget="many2many_tags" options="{'no_create': True}" string="Метод получения" attrs="{'readonly': [('state', 'not in', ['draft', 'revision'])]}"/>
+                        </group>
+                        <group string="Информация">
+                            <field name="create_uid" string="Инициатор" readonly="1"/>
+                            <field name="create_date" string="Дата создания" readonly="1"/>
+                            <field name="assignment_count" string="Заданий"/>
+                            <field name="all_assignments_done" invisible="1"/>
+                        </group>
+                    </group>
+
+                    <group string="Содержание" >
+                        <field name="summary" nolabel="1" colspan="2"
+                               attrs="{'readonly': [('state', 'not in', ['draft', 'revision'])]}"/>
+                    </group>
+
+                    <!-- Скрытые поля для условий видимости -->
+                    <field name="button_approve_enabled" invisible="1"/>
+                    <field name="button_return_enabled" invisible="1"/>
+                    <field name="user_can_approve" invisible="1"/>
+
+                    <!-- ========================================= -->
+                    <!-- Вложения                                  -->
+                    <!-- ========================================= -->
+                    <group string="Вложения">
+                            <group>
+                                <field name="attachment_mail_ids"
+                                    widget="many2many_binary"
+                                    string="Входящее письмо"
+                                    attrs="{'readonly': [('state', 'not in', ['draft', 'revision'])]}"/>
+                            </group>
+                            <group>
+                                <field name="attachment_rest_ids"
+                                    widget="many2many_binary"
+                                    string="Документы от отправителя"
+                                    attrs="{'readonly': [('state', 'not in', ['draft', 'revision'])]}"/>
+                            </group>
+                    </group>
+                    <!-- ========================================= -->
+                    <!-- Notebook: Задания и Согласование          -->
+                    <!-- ========================================= -->
+                    <notebook>
+                        <!-- Вкладка: Задания -->
+                        <page string="Задания" name="assignments">
+                            <field name="assignment_line_ids"
+                                   context="{'default_incoming_id': active_id}"
+                                   attrs="{'readonly': [('state', '=', 'done')]}">
+                                <tree editable="bottom"
+                                      decoration-danger="is_overdue"
+                                      decoration-success="status == 'done'"
+                                      decoration-muted="status == 'done'">
+                                    <field name="id" invisible="1"/>
+                                    <field name="is_overdue" invisible="1"/>
+                                    <field name="user_id" attrs="{'readonly': [('id', '!=', False)]}"/>
+                                    <field name="delegated" invisible="1"/>
+                                    <field name="resolution_id" attrs="{'readonly': [('id', '!=', False)]}"/>
+                                    <field name="deadline" attrs="{'readonly': [('id', '!=', False)]}"/>
+                                    <field name="report_needed" attrs="{'readonly': [('id', '!=', False)]}"/>
+                                    <field name="status"/>
+                                    <field name="completion_datetime" readonly="1"/>
+                                    <field name="report"/>
+                                    <field name="attachment_ids" widget="many2many_binary" string="Вложения"/>
+                                    <field name="assigner_id" readonly="1"/>
+                                    <field name="original_user_id" attrs="{'invisible': [('delegated', '=', False)]}"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <!-- Вкладка: Корреспонденты -->
+                        <page string="Корреспонденты" name="correspondents">
+                            <field name="show_col_full_name" invisible="1"/>
+                            <field name="show_col_address" invisible="1"/>
+                            <field name="show_col_position" invisible="1"/>
+                            <field name="show_col_email" invisible="1"/>
+                            <field name="show_col_phone" invisible="1"/>
+
+                            <field name="correspondent_line_ids" nolabel="1" colspan="2"
+                                attrs="{'readonly': [('state', 'not in', ['draft', 'revision'])]}">
+                                <tree editable="bottom">
+                                    <field name="name" width="200px"/>
+                                    <field name="shipment_method_ids" widget="many2many_tags" options="{'no_create': True}" width="250px"/>
+                                    <field name="full_name" width="180px" attrs="{'column_invisible': [('parent.show_col_full_name', '=', False)]}"/>
+                                    <field name="address" width="200px" attrs="{'column_invisible': [('parent.show_col_address', '=', False)]}"/>
+                                    <field name="position" width="150px" attrs="{'column_invisible': [('parent.show_col_position', '=', False)]}"/>
+                                    <field name="email" width="180px" attrs="{'column_invisible': [('parent.show_col_email', '=', False)]}"/>
+                                    <field name="phone" width="150px" attrs="{'column_invisible': [('parent.show_col_phone', '=', False)]}"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <!-- Вкладка: Текущие согласующие -->
+                        <page string="Согласующие" name="approvers"
+                              attrs="{'invisible': [('state', 'not in', ['review'])]}">>
+                            <field name="state_agreement_line_ids" readonly="1">
+                                <tree decoration-success="status == 'agreed'"
+                                      decoration-warning="status == 'in_progress'"
+                                      decoration-muted="status == 'waiting'">
+                                    <field name="sequence" string="№"/>
+                                    <field name="user_id"/>
+                                    <field name="job_id"/>
+                                    <field name="status"/>
+                                    <field name="agreement_date"/>
+                                    <field name="commentary"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <!-- Вкладка: История согласований -->
+                        <page string="История согласований" name="approval_history">
+                            <field name="state_agreement_history_line_ids" readonly="1">
+                                <tree>
+                                    <field name="user_id"/>
+                                    <field name="job_id"/>
+                                    <field name="status"/>
+                                    <field name="agreement_date"/>
+                                    <field name="commentary"/>
+                                    <field name="signed" widget="boolean"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+
+                </sheet>
+
+                <!-- ========================================= -->
+                <!-- Chatter                                   -->
+                <!-- ========================================= -->
+                <div class="o_attachment_preview"/>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================================== -->
+    <!-- Search View                                    -->
+    <!-- ============================================== -->
+    <record id="view_corr_incoming_search" model="ir.ui.view">
+        <field name="name">corr.incoming.search</field>
+        <field name="model">corr.incoming</field>
+        <field name="arch" type="xml">
+            <search string="Входящая корреспонденция">
+                <field name="name"/>
+                <field name="subject"/>
+                <!-- <field name="partner_id"/> -->
+                <field name="create_uid" string="Инициатор"/>
+                <separator/>
+                <filter string="Мои документы" name="my_documents" 
+                        domain="[('create_uid', '=', uid)]"/>
+                <filter string="На моём согласовании" name="my_approval"
+                        domain="[('approval_user_ids', 'in', uid)]"/>
+                <separator/>
+                <filter string="Черновик" name="state_draft" domain="[('state', '=', 'draft')]"/>
+                <filter string="Доработка" name="state_revision" domain="[('state', '=', 'revision')]"/>
+                <filter string="Ознакомление" name="state_review" domain="[('state', '=', 'review')]"/>
+                <filter string="Исполнение" name="state_execution" domain="[('state', '=', 'execution')]"/>
+                <filter string="Доработка задач" name="state_rework" domain="[('state', '=', 'rework')]"/>
+                <filter string="Завершено" name="state_done" domain="[('state', '=', 'done')]"/>
+                <separator/>
+                <group expand="0" string="Группировка">
+                    <filter string="Статус" name="group_state" context="{'group_by': 'state'}"/>
+                    <!-- <filter string="Отправитель" name="group_partner" context="{'group_by': 'partner_id'}"/> -->
+                    <filter string="Инициатор" name="group_initiator" context="{'group_by': 'create_uid'}"/>
+                    <filter string="Дата документа" name="group_date" context="{'group_by': 'doc_arrival_date'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+</odoo>

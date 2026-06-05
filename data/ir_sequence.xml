@@ -1,0 +1,17 @@
+<odoo>
+    <record id="seq_correspondence_incoming" model="ir.sequence">
+        <field name="name">Incoming Correspondence</field>
+        <field name="code">correspondence.incoming</field>
+        <field name="prefix">ВХ-</field>
+        <field name="suffix">/%(year)s</field>
+        <field name="padding">0</field>
+    </record>
+
+    <record id="seq_correspondence_outgoing" model="ir.sequence">
+        <field name="name">Outgoing Correspondence</field>
+        <field name="code">correspondence.outgoing</field>
+        <field name="prefix">ИСХ-</field>
+        <field name="suffix">/%(year)s</field>
+        <field name="padding">0</field>
+    </record>
+</odoo>

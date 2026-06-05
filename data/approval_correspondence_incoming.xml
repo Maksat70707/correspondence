@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- ============================================== -->
+        <!-- Основной approval для входящей корреспонденции -->
+        <!-- ============================================== -->
+        <record id="corr_incoming_approval" model="appstream.approval">
+            <field name="model_id" ref="model_corr_incoming"/>
+            <field name="name">Входящая корреспонденция</field>
+        </record>
+
+        <!-- ============================================== -->
+        <!-- Статусы ДО согласования (before)               -->
+        <!-- ============================================== -->
+
+        <!-- Статус: Черновик -->
+        <record id="corr_incoming_draft" model="appstream.approval.state">
+            <field name="approval_id" ref="corr_incoming_approval"/>
+            <field name="name">Черновик</field>
+            <field name="type">before</field>
+            <field name="sequence">0</field>
+            <field name="state">draft</field>
+        </record>
+
+        <!-- Статус: Доработка заявки (инициатор исправляет) -->
+        <record id="corr_incoming_revision" model="appstream.approval.state">
+            <field name="approval_id" ref="corr_incoming_approval"/>
+            <field name="name">Доработка заявки</field>
+            <field name="type">before</field>
+            <field name="sequence">1</field>
+            <field name="state">revision</field>
+        </record>
+
+        <!-- ============================================== -->
+        <!-- Статусы ПОСЛЕ согласования (after)             -->
+        <!-- ============================================== -->
+
+        <!-- Статус: Завершено -->
+        <record id="corr_incoming_done" model="appstream.approval.state">
+            <field name="approval_id" ref="corr_incoming_approval"/>
+            <field name="name">Завершено</field>
+            <field name="type">after</field>
+            <field name="sequence">10</field>
+            <field name="state">done</field>
+        </record>
+
+        <!-- Статус: Отклонено (для reject) -->
+        <record id="corr_incoming_canceled" model="appstream.approval.state">
+            <field name="approval_id" ref="corr_incoming_approval"/>
+            <field name="name">Отклонено</field>
+            <field name="type">after</field>
+            <field name="sequence">11</field>
+            <field name="state">canceled</field>
+            <field name="reject_state">True</field>
+        </record>
+
+        <!-- ============================================== -->
+        <!-- Workflow (этапы согласования)                  -->
+        <!-- ============================================== -->
+
+        <!-- 
+            Workflow: Ознакомление (review)
+            Переход: draft/revision → review
+            Согласующий: Гендир (настроить approval_group в UI)
+            После согласования: → execution
+        -->
+        <record id="corr_incoming_workflow_review" model="appstream.approval.workflow">
+            <field name="approval_id" ref="corr_incoming_approval"/>
+            <field name="name">Ознакомление</field>
+            <field name="state">review</field>
+            <field name="sequence">10</field>
+            <field name="condition">True</field>
+            <field name="allow_return">True</field>
+            <field name="schedule_activity">True</field>
+            <field name="before_script">record.get_agreement_lines('review')</field>
+            <field name="after_script">record.after_script("execution", "review")</field>
+            <field name="approve_button_name">На исполнение</field>
+            <field name="approve_confirm_msg">Отправить документ на исполнение?</field>
+        </record>
+
+        <!-- 
+            Workflow: Исполнение (execution)
+            Нет согласования - ждём выполнения заданий
+            Автопереход в done когда все задания выполнены
+        -->
+        <record id="corr_incoming_workflow_execution" model="appstream.approval.workflow">
+            <field name="approval_id" ref="corr_incoming_approval"/>
+            <field name="name">Исполнение</field>
+            <field name="state">execution</field>
+            <field name="sequence">20</field>
+            <field name="condition">True</field>
+            <field name="schedule_activity">False</field>
+            <!-- Нет before/after_script - автопереход через assignment_line в done -->
+        </record>
+
+        <!-- 
+            Workflow: Доработка задач (rework)
+            Нет согласования - ждём выполнения новых заданий
+            Автопереход в done когда все задания выполнены
+        -->
+        <record id="corr_incoming_workflow_rework" model="appstream.approval.workflow">
+            <field name="approval_id" ref="corr_incoming_approval"/>
+            <field name="name">Доработка задач</field>
+            <field name="state">rework</field>
+            <field name="sequence">25</field>
+            <field name="condition">True</field>
+            <field name="schedule_activity">False</field>
+            <!-- Нет before/after_script - автопереход через assignment_line в done -->
+        </record>
+
+    </data>
+</odoo>

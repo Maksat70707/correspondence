@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Cron в 12:00 -->
+    <record id="ir_cron_assignment_notification_noon" model="ir.cron">
+        <field name="name">Корреспонденция: Уведомления по заданиям (12:00)</field>
+        <field name="model_id" ref="model_correspondence_assignment_line"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_send_status_notifications()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="numbercall">-1</field>
+        <field name="active">True</field>
+        <field name="nextcall">2026-01-30 06:00:00</field><!-- 12:00 по Алматы (UTC+6) -->
+    </record>
+
+    <!-- Cron в 17:30 -->
+    <record id="ir_cron_assignment_notification_evening" model="ir.cron">
+        <field name="name">Корреспонденция: Уведомления по заданиям (17:30)</field>
+        <field name="model_id" ref="model_correspondence_assignment_line"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_send_status_notifications()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="numbercall">-1</field>
+        <field name="active">True</field>
+        <field name="nextcall">2026-01-30 11:30:00</field><!-- 17:30 по Алматы (UTC+6) -->
+    </record>
+</odoo>

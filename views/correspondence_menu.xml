@@ -1,0 +1,148 @@
+<odoo>
+
+    <!-- ============================================== -->
+    <!-- Actions для Входящих                          -->
+    <!-- ============================================== -->
+    
+    <!-- Action для Employee: видит свои + assignment_line + история + текущие согласующие -->
+    <record id="action_corr_incoming_employee" model="ir.actions.act_window">
+        <field name="name">Входящая корреспонденция</field>
+        <field name="res_model">corr.incoming</field>
+        <field name="view_mode">tree,kanban,form</field>
+        <field name="domain">['|', '|', '|', ('create_uid', '=', uid), ('assignment_line_ids.user_id', '=', uid), ('state_agreement_history_line_ids.user_id', '=', uid), ('state_agreement_line_ids.user_id', '=', uid)]</field>
+        <field name="context">{'create': 0}</field>
+    </record>
+
+    <!-- Action для Secretary/Director/Admin: видят все -->
+    <record id="action_corr_incoming" model="ir.actions.act_window">
+        <field name="name">Входящая корреспонденция</field>
+        <field name="res_model">corr.incoming</field>
+        <field name="view_mode">tree,kanban,form</field>
+    </record>
+
+    <!-- ============================================== -->
+    <!-- Главное меню                                  -->
+    <!-- ============================================== -->
+    <menuitem id="menu_correspondence_root"
+              name="Корреспонденция"
+              web_icon="correspondence,static/description/icon.png"
+              sequence="10"/>
+
+    <!-- ============================================== -->
+    <!-- Меню Входящие                                 -->
+    <!-- ============================================== -->
+    
+    <!-- Меню Входящие для Employee -->
+    <menuitem id="menu_corr_incoming_employee"
+              name="Входящие"
+              parent="menu_correspondence_root"
+              action="action_corr_incoming_employee"
+              sequence="10"
+              groups="correspondence.group_correspondence_employee"/>
+
+    <!-- Меню Входящие для остальных -->
+    <menuitem id="menu_corr_incoming"
+              name="Входящие"
+              parent="menu_correspondence_root"
+              action="action_corr_incoming"
+              sequence="10"
+              groups="correspondence.group_correspondence_secretary,correspondence.group_correspondence_director,correspondence.group_correspondence_admin"/>
+
+    <!-- ============================================== -->
+    <!-- Меню Исходящие                                -->
+    <!-- ============================================== -->
+
+    <!-- Меню Исходящие для Employee -->
+    <menuitem id="menu_corr_outgoing_employee"
+              name="Исходящие"
+              parent="menu_correspondence_root"
+              action="action_corr_outgoing_employee"
+              sequence="20"
+              groups="correspondence.group_correspondence_employee"/>
+
+    <!-- Меню Исходящие для остальных -->
+    <menuitem id="menu_corr_outgoing"
+              name="Исходящие"
+              parent="menu_correspondence_root"
+              action="action_corr_outgoing"
+              sequence="20"
+              groups="correspondence.group_correspondence_secretary,correspondence.group_correspondence_director,correspondence.group_correspondence_admin"/>
+
+    <!-- ============================================== -->
+    <!-- Меню Поручения                               -->
+    <!-- ============================================== -->
+
+    <!-- Меню Поручения для Employee -->
+    <menuitem id="menu_corr_tasks_employee"
+              name="Поручения"
+              parent="menu_correspondence_root"
+              action="action_assignment_tasks_employee"
+              sequence="25"
+              groups="correspondence.group_correspondence_employee"/>
+
+    <!-- Меню Поручения для остальных -->
+    <menuitem id="menu_corr_tasks_all"
+              name="Поручения"
+              parent="menu_correspondence_root"
+              action="action_assignment_tasks_all"
+              sequence="25"
+              groups="correspondence.group_correspondence_secretary,correspondence.group_correspondence_director,correspondence.group_correspondence_admin"/>
+
+    <!-- ============================================== -->
+    <!-- Меню Отчеты                                -->
+    <!-- ============================================== -->
+
+    <!-- Меню Отчеты для Employee -->
+    <menuitem id="menu_corr_reports"
+              name="Отчеты"
+              parent="menu_correspondence_root"
+              sequence="30"
+              groups="correspondence.group_correspondence_director,correspondence.group_correspondence_admin"/>
+
+    <!-- Меню Задачи для Employee -->
+    <menuitem id="menu_corr_tasks"
+              name="Задачи"
+              parent="menu_corr_reports"
+              action="action_assignment_line_report"
+              sequence="10"
+              groups="correspondence.group_correspondence_director,correspondence.group_correspondence_admin"/>
+      
+    <!-- ============================================== -->
+    <!-- Настройки                                     -->
+    <!-- ============================================== -->
+    <menuitem
+        id="menu_correspondence_settings"
+        name="Настройки"
+        parent="menu_correspondence_root"
+        sequence="100"
+        groups="correspondence.group_correspondence_admin"
+    />
+
+    <menuitem
+        id="menu_correspondence_resolution_option"
+        name="Резолюции"
+        parent="menu_correspondence_settings"
+        action="action_resolution_option"
+        sequence="10"
+        groups="correspondence.group_correspondence_admin"
+    />
+
+    <menuitem
+        id="menu_correspondence_shipment_method"
+        name="Методы отправки"
+        parent="menu_correspondence_settings"
+        action="action_shipment_method"
+        sequence="20"
+        groups="correspondence.group_correspondence_admin"
+    />
+
+    <menuitem
+        id="menu_correspondence_outgoing_type"
+        name="Типы писем"
+        parent="menu_correspondence_settings"
+        action="action_outgoing_type"
+        sequence="30"
+        groups="correspondence.group_correspondence_admin"
+    />
+
+</odoo>

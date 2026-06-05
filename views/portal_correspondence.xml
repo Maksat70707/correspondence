@@ -1,0 +1,351 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============================================== -->
+    <!-- Страница успешного подписания                 -->
+    <!-- ============================================== -->
+    <template id="portal_correspondence_signed" name="Документ подписан">
+        <t t-call="portal.portal_layout">
+            <div class="container mt-4">
+                <div class="alert alert-success" role="alert">
+                    <h4 class="alert-heading">
+                        <i class="fa fa-check-circle"/> Документ успешно подписан!
+                    </h4>
+                    <p>Ваша электронная подпись успешно добавлена к документу.</p>
+                    <hr/>
+                    <p class="mb-0">
+                        <a href="/my/correspondence" class="btn btn-primary">
+                            Вернуться к списку документов
+                        </a>
+                    </p>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- ============================================== -->
+    <!-- Список документов корреспонденции             -->
+    <!-- ============================================== -->
+    <template id="portal_correspondence_list" name="Корреспонденция">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Направления на освидетельствование</t>
+            </t>
+            
+            <t t-if="documents" t-call="portal.portal_table">
+                <thead>
+                    <tr class="active">
+                        <th>Номер</th>
+                        <th>Тема</th>
+                        <th>Сотрудник</th>
+                        <th>Дата создания</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                
+                <t t-set="state_classes" t-value="{
+                    'approval_medical_examination': 'text-danger',
+                    'processing': 'text-warning',
+                    'review': 'text-info',
+                    'done': 'text-success'
+                }"/>
+                
+                <t t-foreach="documents" t-as="doc">
+                    <tr>
+                        <td>
+                            <a t-attf-href="/my/correspondence/#{doc.id}">
+                                <span t-field="doc.name"/>
+                            </a>
+                        </td>
+                        <td><span t-field="doc.subject"/></td>
+                        <td><span t-field="doc.employee_id.name"/></td>
+                        <td><span t-field="doc.create_date" t-options='{"widget": "date"}'/></td>
+                        <td t-att-class="state_classes.get(doc.state, '')">
+                            <span t-field="doc.state"/>
+                        </td>
+                    </tr>
+                </t>
+            </t>
+            
+            <p t-else="" class="text-muted">Нет документов для подписания.</p>
+        </t>
+    </template>
+
+    <!-- ============================================== -->
+    <!-- Детальный просмотр документа                  -->
+    <!-- ============================================== -->
+    <template id="portal_correspondence_detail" name="Детали документа">
+        <t t-call="portal.portal_layout">
+            <div class="container mt-4">
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h2 class="mb-0"><t t-esc="document.name"/></h2>
+                        
+                        <!-- Кнопка подписания -->
+                        <t t-if="document.state == 'approval_medical_examination' and can_sign">
+                            <button type="button" class="btn btn-primary btn-lg"
+                                t-att-data-document-id="document.id"
+                                t-att-data-partner-id="current_partner.id"
+                                t-att-data-document-name="document.name"
+                                onclick="signCorrespondenceEsp(this)">
+                                <i class="fa fa-pencil"/> Подписать ЭЦП
+                            </button>
+                        </t>
+                        <t t-elif="document.state == 'approval_medical_examination' and not signed and not can_sign">
+                            <span class="badge bg-info text-dark">
+                                Ожидается подписание другими участниками. Ваша очередь ещё не наступила.
+                            </span>
+                        </t>
+                        <t t-elif="document.state == 'approval_medical_examination' and signed">
+                            <span class="badge bg-warning text-dark">
+                                Вы подписали. Ожидается подписание других участников
+                            </span>
+                        </t>
+                        <t t-elif="signed">
+                            <span class="badge bg-success">
+                                <i class="fa fa-check"/> Подписано
+                            </span>
+                        </t>
+                    </div>
+                    
+                    <div class="card-body">
+                        <!-- Основная информация -->
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <strong>Тема:</strong>
+                                <p><t t-esc="document.subject"/></p>
+                            </div>
+                            <div class="col-md-6">
+                                <strong>Тип письма:</strong>
+                                <p><t t-esc="document.type_id.name"/></p>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <strong>Краткое содержание:</strong>
+                                <p><t t-esc="document.summary"/></p>
+                            </div>
+                            <div class="col-md-6">
+                                <strong>Дата создания:</strong>
+                                <p><span t-field="document.create_date" t-options='{"widget": "datetime"}'/></p>
+                            </div>
+                        </div>
+                        
+                        <!-- Информация о сотруднике -->
+                        <t t-if="document.employee_id">
+                            <h5 class="mt-4">Информация о сотруднике</h5>
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <strong>ФИО:</strong>
+                                    <p><t t-esc="document.employee_id.name"/></p>
+                                </div>
+                                <div class="col-md-6">
+                                    <strong>Должность:</strong>
+                                    <p><t t-esc="document.employee_job_id.name" t-if="document.employee_job_id"/></p>
+                                </div>
+                            </div>
+                        </t>
+                        
+                        <!-- Информация для медицинского освидетельствования -->
+                        <t t-if="document.show_medical_examination">
+                            <h5 class="mt-4">Данные направления</h5>
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <strong>Номер акта:</strong>
+                                    <p><t t-esc="document.act_number"/></p>
+                                </div>
+                                <div class="col-md-6">
+                                    <strong>Дата акта:</strong>
+                                    <p><span t-field="document.act_date" t-options='{"widget": "date"}'/></p>
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-12">
+                                    <strong>Причина направления:</strong>
+                                    <p><t t-esc="document.reason_for_medical_examination_rus"/></p>
+                                </div>
+                            </div>
+                        </t>
+                        
+                        <!-- Вложения -->
+                        <h5 class="mt-4">Документы</h5>
+                        <ul class="list-group">
+                            <t t-foreach="document.attachment_to_sign_ids" t-as="attachment">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span>
+                                        <i class="fa fa-file-pdf-o text-danger" t-if="'pdf' in attachment.name.lower()"/>
+                                        <i class="fa fa-file-word-o text-primary" t-elif="'doc' in attachment.name.lower()"/>
+                                        <i class="fa fa-file-o" t-else=""/>
+                                        <t t-esc="attachment.name"/>
+                                    </span>
+                                    <a t-attf-href="/correspondence/download/file/#{attachment.id}" 
+                                       class="btn btn-sm btn-outline-primary">
+                                        <i class="fa fa-download"/> Скачать
+                                    </a>
+                                </li>
+                            </t>
+                            <t t-foreach="document.attachment_additional_sign_ids" t-as="attachment">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span>
+                                        <i class="fa fa-file-pdf-o text-danger" t-if="'pdf' in attachment.name.lower()"/>
+                                        <i class="fa fa-file-word-o text-primary" t-elif="'doc' in attachment.name.lower()"/>
+                                        <i class="fa fa-file-o" t-else=""/>
+                                        <t t-esc="attachment.name"/>
+                                    </span>
+                                    <a t-attf-href="/correspondence/download/file/#{attachment.id}" 
+                                       class="btn btn-sm btn-outline-primary">
+                                        <i class="fa fa-download"/> Скачать
+                                    </a>
+                                </li>
+                            </t>
+                        </ul>
+                        
+                        <!-- История согласования -->
+                        <t t-if="document.state_agreement_history_line_ids">
+                            <h5 class="mt-4">История подписания</h5>
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Подписант</th>
+                                        <th>Статус</th>
+                                        <th>Дата</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <t t-foreach="document.state_agreement_history_line_ids" t-as="history">
+                                        <tr>
+                                            <td><t t-esc="history.user_id.name"/></td>
+                                            <td>
+                                                <span class="badge bg-success" t-if="history.signed">
+                                                    <i class="fa fa-check"/> Подписано ЭЦП
+                                                </span>
+                                                <span class="badge bg-secondary" t-else="">
+                                                    <t t-esc="history.status"/>
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span t-field="history.agreement_date" 
+                                                      t-options='{"widget": "datetime"}'/>
+                                            </td>
+                                        </tr>
+                                    </t>
+                                </tbody>
+                            </table>
+                        </t>
+                    </div>
+                </div>
+                
+                <a href="/my/correspondence" class="btn btn-secondary">
+                    <i class="fa fa-arrow-left"/> Назад к списку
+                </a>
+            </div>
+        </t>
+        
+        <!-- JavaScript для подписания -->
+        <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+        <script src="/web/static/lib/jquery.blockUI/jquery.blockUI.js"></script>
+        <script>
+            function signCorrespondenceEsp(button) {
+                var documentId = button.getAttribute('data-document-id');
+                var partnerId = button.getAttribute('data-partner-id');
+                var name = button.getAttribute('data-document-name');
+                var model = 'corr.outgoing';
+                var xml = `&lt;data&gt;&lt;model&gt;corr.outgoing&lt;/model&gt;&lt;id&gt;${documentId}&lt;/id&gt;&lt;uid&gt;${partnerId}&lt;/uid&gt;&lt;display_name&gt;${name}&lt;/display_name&gt;&lt;n&gt;${name}&lt;/n&gt;&lt;/data&gt;`
+                
+                $.blockUI({ message: 'Подписание документа...' });
+                
+                if (window.hasOwnProperty('webSocket')) {
+                    if (webSocket.readyState === webSocket.OPEN) {
+                        basicsSign(xml, function (result) {
+                            if (result.status === true &amp;&amp; result.responseObject &amp;&amp; typeof result.responseObject === 'object' &amp;&amp; Object.keys(result.responseObject)) {
+                                fetch('/correspondence/sign/esp/success', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({
+                                        document_id: documentId,
+                                        uid: partnerId,
+                                        name: name,
+                                        xml: result.responseObject["result"][0]
+                                    }),
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.result.status === 200) {
+                                        window.location.href = data.result.redirect_url || "/correspondence/signed/success";
+                                    } else {
+                                        alert(data.result.message);
+                                    }
+                                })
+                                .catch(error => {
+                                    alert("Ошибка при отправке подписи: " + error);
+                                })
+                                .finally(() => {
+                                    $.unblockUI();
+                                });
+                            } else {
+                                alert("Ошибка при подписании. Попробуйте еще раз!");
+                                $.unblockUI();
+                            }
+                        });
+                    } else {
+                        initNcaLayer();
+                        alert("Ошибка при подключении NCALayer. Попробуйте еще раз!");
+                        $.unblockUI();
+                    }
+                } else {
+                    initNcaLayer();
+                    alert("NCALayer не подключен. Установите и запустите NCALayer.");
+                    $.unblockUI();
+                }
+            }
+        </script>
+        <script src="/appstream_approval/static/src/lib/ncalayer/ncalayer.js"></script>
+    </template>
+
+    <!-- ============================================== -->
+    <!-- Добавление в портальное меню                  -->
+    <!-- ============================================== -->
+    <template id="portal_correspondence_menu" 
+              name="Portal Correspondence Menu"
+              inherit_id="portal.portal_my_home"
+              priority="99">
+        <xpath expr="//div[hasclass('o_portal_docs')]" position="after">
+            <div class="o_portal_docs_correspondence">
+                <t t-call="portal.portal_docs_entry">
+                    <t t-set="title">Направления на освидетельствование</t>
+                    <t t-set="url" t-value="'/my/correspondence'"/>
+                    <t t-set="placeholder_count" t-value="'correspondence_count'"/>
+                </t>
+            </div>
+        </xpath>
+    </template>
+
+    <!-- ============================================== -->
+    <!-- Breadcrumbs для портала                       -->
+    <!-- ============================================== -->
+    <template id="portal_correspondence_breadcrumb" 
+              name="Portal Correspondence Breadcrumb"
+              inherit_id="portal.portal_breadcrumbs"
+              priority="60">
+        <xpath expr="//ol[hasclass('o_portal_submenu')]" position="inside">
+            <li t-if="page_name == 'correspondence'" class="breadcrumb-item active">
+                <span>Направления на освидетельствование</span>
+            </li>
+            <li t-if="page_name == 'correspondence_detail'" class="breadcrumb-item active">
+                <a href="/my/correspondence" aria-label="Correspondence" title="Correspondence">
+                    <span>Направления на освидетельствование</span>
+                </a>
+                <span>/ <em t-out="document.name"/></span>
+            </li>
+            <li t-if="page_name == 'correspondence_signed'" class="breadcrumb-item active">
+                <a href="/my/correspondence" aria-label="Correspondence" title="Correspondence">
+                    <span>Направления на освидетельствование</span>
+                </a>
+            </li>
+        </xpath>
+    </template>
+
+</odoo>

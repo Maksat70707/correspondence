@@ -1,0 +1,10 @@
+<odoo>
+    <record id="simple" model="correspondence.outgoing.type"><field name="name">Обычное письмо</field></record>
+    <record id="explanation" model="correspondence.outgoing.type"><field name="name">Требование объяснительной</field></record>
+    <record id="medical_examination" model="correspondence.outgoing.type"><field name="name">Направление на медицинское освидетельствование</field></record>
+    <record id="medical_checkup" model="correspondence.outgoing.type"><field name="name">Направление на медицинский осмотр</field></record>
+    <record id="change_conditions" model="correspondence.outgoing.type"><field name="name">Уведомление об изменении условий труда/ расторжении трудового договора</field></record>
+    <record id="job_offer" model="correspondence.outgoing.type"><field name="name">Предложение о работе</field></record>
+    <record id="reference" model="correspondence.outgoing.type"><field name="name">Справка с места работы</field></record>
+    <record id="guarantee" model="correspondence.outgoing.type"><field name="name">Гарантийное письмо</field></record>
+</odoo>

@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================== -->
+    <!-- Mail Template: Входящая корреспонденция        -->
+    <!-- ============================================== -->
+    <record id="corr_incoming_mail_template" model="mail.template">
+        <field name="name">Incoming Correspondence Notification</field>
+        <field name="model_id" ref="model_corr_incoming"/>
+        <field name="lang">{{ ctx.get('user').lang }}</field>
+        <field name="auto_delete" eval="True"/>
+        <field name="email_from">no_reply@caspineft.kz</field>
+        <field name="email_to">{{ ctx.get('user').email }}</field>
+
+        <field name="subject">
+            [Корреспонденция] {{ ctx.get('object').display_name }}
+        </field>
+
+        <field name="body_html" type="html">
+            <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+
+                <t t-set="obj" t-value="ctx.get('object')"/>
+                <t t-set="user" t-value="ctx.get('user')"/>
+                <t t-set="notif_type" t-value="ctx.get('notif_type')"/>
+                <t t-set="reason" t-value="ctx.get('reason')"/>
+
+                <p>Уважаемый(ая) <strong><t t-out="user.name or ''"/></strong>,</p>
+
+                <!-- Назначение / согласование -->
+                <t t-if="notif_type == 'agreement'">
+                    <div style="background-color: #cce5ff; border: 1px solid #007bff; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                        <p style="margin: 0;">
+                            <strong>Требуется ваше действие</strong>
+                        </p>
+                        <p style="margin: 10px 0 0 0;">
+                            Вам назначена задача по входящей корреспонденции
+                            <strong><t t-out="obj.display_name"/></strong>.
+                        </p>
+                    </div>
+                </t>
+
+                <!-- Завершение / одобрение -->
+                <t t-elif="notif_type == 'approved'">
+                    <div style="background-color: #d4edda; border: 1px solid #28a745; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                        <p style="margin: 0;">
+                            <strong>Документ обработан</strong>
+                        </p>
+                        <p style="margin: 10px 0 0 0;">
+                            Документ <strong><t t-out="obj.display_name"/></strong>
+                            успешно прошёл согласование и обработан.
+                        </p>
+                    </div>
+                </t>
+
+                <!-- Ссылка на документ -->
+                <p style="margin-top: 20px;">
+                    <strong>Перейти к документу:</strong><br/>
+                    <a t-attf-href="{{ base_url }}/web#id={{ obj.id }}&amp;view_type=form&amp;model={{ obj._name }}" style="color: #007bff; text-decoration: none;">
+                        <t t-out="obj.display_name or ''"/>
+                    </a>
+                </p>
+
+                <!-- Информация о документе -->
+                <table style="margin-top: 20px; border-collapse: collapse; width: 100%;">
+                    <tr>
+                        <td style="padding: 5px 10px; background-color: #f8f9fa; border: 1px solid #dee2e6; width: 150px;">
+                            <strong>Тема:</strong>
+                        </td>
+                        <td style="padding: 5px 10px; border: 1px solid #dee2e6;">
+                            <t t-out="obj.subject or ''"/>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 10px; background-color: #f8f9fa; border: 1px solid #dee2e6;">
+                            <strong>Инициатор:</strong>
+                        </td>
+                        <td style="padding: 5px 10px; border: 1px solid #dee2e6;">
+                            <t t-out="obj.create_uid.name or ''"/>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 10px; background-color: #f8f9fa; border: 1px solid #dee2e6;">
+                            <strong>Статус:</strong>
+                        </td>
+                        <td style="padding: 5px 10px; border: 1px solid #dee2e6;">
+                            <t t-out="obj.state or ''"/>
+                        </td>
+                    </tr>
+                </table>
+
+                <hr style="margin-top: 30px; border: none; border-top: 1px solid #dee2e6;"/>
+                <p style="color: #6c757d; font-size: 12px;">
+                    Это автоматическое уведомление системы Odoo. Пожалуйста, не отвечайте на это письмо.
+                </p>
+
+            </div>
+        </field>
+    </record>
+
+    <!-- ============================================== -->
+    <!-- Mail Template: Исходящая корреспонденция       -->
+    <!-- ============================================== -->
+    <record id="corr_outgoing_mail_template" model="mail.template">
+        <field name="name">Outgoing Correspondence Notification</field>
+        <field name="model_id" ref="model_corr_outgoing"/>
+        <field name="lang">{{ ctx.get('user').lang }}</field>
+        <field name="auto_delete" eval="True"/>
+        <field name="email_from">no_reply@caspineft.kz</field>
+        <field name="email_to">{{ ctx.get('user').email }}</field>
+
+        <field name="subject">
+            [Исходящая корреспонденция] {{ ctx.get('object').display_name }}
+        </field>
+
+        <field name="body_html" type="html">
+            <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+
+                <t t-set="obj" t-value="ctx.get('object')"/>
+                <t t-set="user" t-value="ctx.get('user')"/>
+                <t t-set="notif_type" t-value="ctx.get('notif_type')"/>
+                <t t-set="reason" t-value="ctx.get('reason')"/>
+
+                <p>Уважаемый(ая) <strong><t t-out="user.name or ''"/></strong>,</p>
+
+                <!-- Назначение / согласование -->
+                <t t-if="notif_type == 'agreement'">
+                    <div style="background-color: #cce5ff; border: 1px solid #007bff; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                        <p style="margin: 0;">
+                            <strong>Требуется ваше действие</strong>
+                        </p>
+                        <p style="margin: 10px 0 0 0;">
+                            Вам назначена задача по исходящей корреспонденции
+                            <strong><t t-out="obj.display_name"/></strong>.
+                        </p>
+                    </div>
+                </t>
+
+                <!-- Завершение / одобрение -->
+                <t t-elif="notif_type == 'approved'">
+                    <div style="background-color: #d4edda; border: 1px solid #28a745; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                        <p style="margin: 0;">
+                            <strong>Документ обработан</strong>
+                        </p>
+                        <p style="margin: 10px 0 0 0;">
+                            Документ <strong><t t-out="obj.display_name"/></strong>
+                            успешно прошёл согласование и закрыт.
+                        </p>
+                    </div>
+                </t>
+
+                <!-- Ссылка на документ -->
+                <p style="margin-top: 20px;">
+                    <strong>Перейти к документу:</strong><br/>
+                    <a t-attf-href="{{ base_url }}/web#id={{ obj.id }}&amp;view_type=form&amp;model={{ obj._name }}" style="color: #007bff; text-decoration: none;">
+                        <t t-out="obj.display_name or ''"/>
+                    </a>
+                </p>
+
+                <!-- Информация о документе -->
+                <table style="margin-top: 20px; border-collapse: collapse; width: 100%;">
+                    <tr>
+                        <td style="padding: 5px 10px; background-color: #f8f9fa; border: 1px solid #dee2e6; width: 150px;">
+                            <strong>Тема:</strong>
+                        </td>
+                        <td style="padding: 5px 10px; border: 1px solid #dee2e6;">
+                            <t t-out="obj.subject or ''"/>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 10px; background-color: #f8f9fa; border: 1px solid #dee2e6;">
+                            <strong>Инициатор:</strong>
+                        </td>
+                        <td style="padding: 5px 10px; border: 1px solid #dee2e6;">
+                            <t t-out="obj.create_uid.name or ''"/>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 10px; background-color: #f8f9fa; border: 1px solid #dee2e6;">
+                            <strong>Статус:</strong>
+                        </td>
+                        <td style="padding: 5px 10px; border: 1px solid #dee2e6;">
+                            <t t-out="obj.state or ''"/>
+                        </td>
+                    </tr>
+                </table>
+
+                <hr style="margin-top: 30px; border: none; border-top: 1px solid #dee2e6;"/>
+                <p style="color: #6c757d; font-size: 12px;">
+                    Это автоматическое уведомление системы Odoo. Пожалуйста, не отвечайте на это письмо.
+                </p>
+
+            </div>
+        </field>
+    </record>
+
+</odoo>

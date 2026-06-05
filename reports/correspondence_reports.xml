@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Направление на МО - DOCX -->
+    <record id="correspondence_medical_checkup_docx" model="ir.actions.report">
+        <field name="name">Направление на МО (DOCX)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">docx</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/direction_mo_template.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_medical_checkup_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_medical_checkup_docx</field>
+        <field name="print_report_name">'Направление на МО - %s' % object.name</field>
+        <field name="attachment">'Направление на МО - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="groups_id" eval="[(4,ref('correspondence.group_correspondence_employee')),(4,ref('correspondence.group_correspondence_secretary')),(4,ref('correspondence.group_correspondence_director')),(4,ref('correspondence.group_correspondence_admin'))]"/>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Направление на МО - PDF -->
+    <record id="correspondence_medical_checkup_pdf" model="ir.actions.report">
+        <field name="name">Направление на МО (PDF)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">pdf</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/direction_mo_template.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_medical_checkup_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_medical_checkup_pdf</field>
+        <field name="print_report_name">'Направление на МО - %s' % object.name</field>
+        <field name="attachment">'Направление на МО - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="groups_id" eval="[(4,ref('correspondence.group_correspondence_employee')),(4,ref('correspondence.group_correspondence_secretary')),(4,ref('correspondence.group_correspondence_director')),(4,ref('correspondence.group_correspondence_admin'))]"/>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Требование о письменном объяснении - DOCX -->
+    <record id="correspondence_explanation_request_docx" model="ir.actions.report">
+        <field name="name">Требование о письменном объяснении (DOCX)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">docx</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/explanation_request_template.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_explanation_request_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_explanation_request_docx</field>
+        <field name="print_report_name">'Требование объяснительной - %s' % object.name</field>
+        <field name="attachment">'Требование объяснительной - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="groups_id" eval="[(4,ref('correspondence.group_correspondence_employee')),(4,ref('correspondence.group_correspondence_secretary')),(4,ref('correspondence.group_correspondence_director')),(4,ref('correspondence.group_correspondence_admin'))]"/>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Требование о письменном объяснении - PDF -->
+    <record id="correspondence_explanation_request_pdf" model="ir.actions.report">
+        <field name="name">Требование о письменном объяснении (PDF)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">pdf</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/explanation_request_template.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_explanation_request_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_explanation_request_pdf</field>
+        <field name="print_report_name">'Требование объяснительной - %s' % object.name</field>
+        <field name="attachment">'Требование объяснительной - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="groups_id" eval="[(4,ref('correspondence.group_correspondence_employee')),(4,ref('correspondence.group_correspondence_secretary')),(4,ref('correspondence.group_correspondence_director')),(4,ref('correspondence.group_correspondence_admin'))]"/>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Направление на медицинское освидетельствование (рус) - DOCX -->
+    <record id="correspondence_medical_examination_docx" model="ir.actions.report">
+        <field name="name">Направление на медицинское освидетельствование (DOCX)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">docx</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/medical_examination_template_rus.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_medical_assessment_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_medical_examination_docx</field>
+        <field name="print_report_name">'Направление на освидетельствование - %s' % object.name</field>
+        <field name="attachment">'Направление на освидетельствование - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="groups_id" eval="[(4,ref('correspondence.group_correspondence_employee')),(4,ref('correspondence.group_correspondence_secretary')),(4,ref('correspondence.group_correspondence_director')),(4,ref('correspondence.group_correspondence_admin'))]"/>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Направление на медицинское освидетельствование (рус) - PDF -->
+    <record id="correspondence_medical_examination_pdf" model="ir.actions.report">
+        <field name="name">Направление на медицинское освидетельствование (PDF)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">pdf</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/medical_examination_template_rus.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_medical_assessment_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_medical_examination_pdf</field>
+        <field name="print_report_name">'Направление на освидетельствование - %s' % object.name</field>
+        <field name="attachment">'Направление на освидетельствование - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="groups_id" eval="[(4,ref('correspondence.group_correspondence_employee')),(4,ref('correspondence.group_correspondence_secretary')),(4,ref('correspondence.group_correspondence_director')),(4,ref('correspondence.group_correspondence_admin'))]"/>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Направление на медицинское освидетельствование (каз) - DOCX -->
+    <record id="correspondence_medical_examination_kaz_docx" model="ir.actions.report">
+        <field name="name">Медициналық куәландыруға жолдама (DOCX)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">docx</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/medical_examination_template_kaz.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_medical_assessment_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_medical_examination_kaz_docx</field>
+        <field name="print_report_name">'Медициналық куәландыруға жолдама - %s' % object.name</field>
+        <field name="attachment">'Медициналық куәландыруға жолдама - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="groups_id" eval="[(4,ref('correspondence.group_correspondence_employee')),(4,ref('correspondence.group_correspondence_secretary')),(4,ref('correspondence.group_correspondence_director')),(4,ref('correspondence.group_correspondence_admin'))]"/>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Направление на медицинское освидетельствование (каз) - PDF -->
+    <record id="correspondence_medical_examination_kaz_pdf" model="ir.actions.report">
+        <field name="name">Медициналық куәландыруға жолдама (PDF)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">pdf</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/medical_examination_template_kaz.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_medical_assessment_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_medical_examination_kaz_pdf</field>
+        <field name="print_report_name">'Медициналық куәландыруға жолдама - %s' % object.name</field>
+        <field name="attachment">'Медициналық куәландыруға жолдама - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="groups_id" eval="[(4,ref('correspondence.group_correspondence_employee')),(4,ref('correspondence.group_correspondence_secretary')),(4,ref('correspondence.group_correspondence_director')),(4,ref('correspondence.group_correspondence_admin'))]"/>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Предложение о работе (рус) - DOCX -->
+    <record id="correspondence_job_offer_docx" model="ir.actions.report">
+        <field name="name">Предложение о работе (DOCX)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">docx</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/job_offer_rus.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_job_offer_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_job_offer_docx</field>
+        <field name="print_report_name">'Предложение о работе - %s' % object.name</field>
+        <field name="attachment">'Предложение о работе - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="groups_id" eval="[(4,ref('correspondence.group_correspondence_employee')),(4,ref('correspondence.group_correspondence_secretary')),(4,ref('correspondence.group_correspondence_director')),(4,ref('correspondence.group_correspondence_admin'))]"/>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Предложение о работе (рус) - PDF -->
+    <record id="correspondence_job_offer_pdf" model="ir.actions.report">
+        <field name="name">Предложение о работе (PDF)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">pdf</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/job_offer_rus.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_job_offer_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_job_offer_pdf</field>
+        <field name="print_report_name">'Предложение о работе - %s' % object.name</field>
+        <field name="attachment">'Предложение о работе - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="groups_id" eval="[(4,ref('correspondence.group_correspondence_employee')),(4,ref('correspondence.group_correspondence_secretary')),(4,ref('correspondence.group_correspondence_director')),(4,ref('correspondence.group_correspondence_admin'))]"/>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Предложение о работе (каз) - DOCX -->
+    <record id="correspondence_job_offer_kaz_docx" model="ir.actions.report">
+        <field name="name">Предложение о работе (каз) (DOCX)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">docx</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/job_offer_kaz.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_job_offer_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_job_offer_kaz_docx</field>
+        <field name="print_report_name">'Предложение о работе (каз) - %s' % object.name</field>
+        <field name="attachment">'Предложение о работе (каз) - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="groups_id" eval="[(4,ref('correspondence.group_correspondence_employee')),(4,ref('correspondence.group_correspondence_secretary')),(4,ref('correspondence.group_correspondence_director')),(4,ref('correspondence.group_correspondence_admin'))]"/>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Предложение о работе (каз) - PDF -->
+    <record id="correspondence_job_offer_kaz_pdf" model="ir.actions.report">
+        <field name="name">Предложение о работе (каз) (PDF)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">pdf</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/job_offer_kaz.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_job_offer_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_job_offer_kaz_pdf</field>
+        <field name="print_report_name">'Предложение о работе (каз) - %s' % object.name</field>
+        <field name="attachment">'Предложение о работе (каз) - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="groups_id" eval="[(4,ref('correspondence.group_correspondence_employee')),(4,ref('correspondence.group_correspondence_secretary')),(4,ref('correspondence.group_correspondence_director')),(4,ref('correspondence.group_correspondence_admin'))]"/>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+   <!-- Справка с места работы (каз/рус) - DOCX -->
+    <record id="correspondence_reference_letter_docx" model="ir.actions.report">
+        <field name="name">Справка с места работы (каз/рус) (DOCX)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">docx</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/reference_letter_kaz_rus.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_reference_letter_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_reference_letter_docx</field>
+        <field name="print_report_name">'Справка с места работы (каз/рус)- %s' % object.name</field>
+        <field name="attachment">'Справка с места работы (каз/рус) - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="groups_id" eval="[(4,ref('correspondence.group_correspondence_employee')),(4,ref('correspondence.group_correspondence_secretary')),(4,ref('correspondence.group_correspondence_director')),(4,ref('correspondence.group_correspondence_admin'))]"/>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Справка с места работы (каз/рус) - PDF -->
+    <record id="correspondence_reference_letter_pdf" model="ir.actions.report">
+        <field name="name">Справка с места работы (каз/рус) (PDF)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">pdf</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/reference_letter_kaz_rus.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_reference_letter_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_reference_letter_pdf</field>
+        <field name="print_report_name">'Справка с места работы (каз/рус) - %s' % object.name</field>
+        <field name="attachment">'Справка с места работы (каз/рус) - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="groups_id" eval="[(4,ref('correspondence.group_correspondence_employee')),(4,ref('correspondence.group_correspondence_secretary')),(4,ref('correspondence.group_correspondence_director')),(4,ref('correspondence.group_correspondence_admin'))]"/>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Справка с места работы (рус/англ) - DOCX -->
+    <record id="correspondence_reference_letter_eng_docx" model="ir.actions.report">
+        <field name="name">Справка с места работы (рус/англ) (DOCX)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">docx</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/reference_letter_rus_eng.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_reference_letter_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_reference_letter_eng_docx</field>
+        <field name="print_report_name">'Справка с места работы (рус/англ) - %s' % object.name</field>
+        <field name="attachment">'Справка с места работы (рус/англ) - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="groups_id" eval="[(4,ref('correspondence.group_correspondence_employee')),(4,ref('correspondence.group_correspondence_secretary')),(4,ref('correspondence.group_correspondence_director')),(4,ref('correspondence.group_correspondence_admin'))]"/>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Справка с места работы (рус/англ) - PDF -->
+    <record id="correspondence_reference_letter_eng_pdf" model="ir.actions.report">
+        <field name="name">Справка с места работы (рус/англ) (PDF)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">pdf</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/reference_letter_rus_eng.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_reference_letter_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_reference_letter_eng_pdf</field>
+        <field name="print_report_name">'Справка с места работы (рус/англ) - %s' % object.name</field>
+        <field name="attachment">'Справка с места работы (рус/англ) - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="groups_id" eval="[(4,ref('correspondence.group_correspondence_employee')),(4,ref('correspondence.group_correspondence_secretary')),(4,ref('correspondence.group_correspondence_director')),(4,ref('correspondence.group_correspondence_admin'))]"/>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>        
+</odoo>

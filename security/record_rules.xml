@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================== -->
+    <!-- Правила для corr.incoming                     -->
+    <!-- ============================================== -->
+
+    <!-- Employee: доступ к записям где он инициатор или назначен исполнителем -->
+    <record id="rule_corr_incoming_employee" model="ir.rule">
+        <field name="name">Incoming: Employee access (initiator or assigned)</field>
+        <field name="model_id" ref="model_corr_incoming"/>
+        <field name="domain_force">[
+            '|', '|',
+            ('create_uid', '=', user.id),
+            ('assignment_line_ids.user_id', '=', user.id),
+            ('assignment_line_ids.original_user_id', '=', user.id)
+        ]</field>
+        <field name="groups" eval="[(4, ref('correspondence.group_correspondence_employee'))]"/>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <!-- Secretary: полный доступ ко всем записям -->
+    <record id="rule_corr_incoming_secretary" model="ir.rule">
+        <field name="name">Incoming: Secretary full access</field>
+        <field name="model_id" ref="model_corr_incoming"/>
+        <field name="domain_force">[(1,'=',1)]</field>
+        <field name="groups" eval="[(4, ref('correspondence.group_correspondence_secretary'))]"/>
+    </record>
+
+    <!-- Director: полный доступ ко всем записям -->
+    <record id="rule_corr_incoming_director" model="ir.rule">
+        <field name="name">Incoming: Director full access</field>
+        <field name="model_id" ref="model_corr_incoming"/>
+        <field name="domain_force">[(1,'=',1)]</field>
+        <field name="groups" eval="[(4, ref('correspondence.group_correspondence_director'))]"/>
+    </record>
+
+    <!-- Admin: полный доступ ко всем записям -->
+    <record id="rule_corr_incoming_admin" model="ir.rule">
+        <field name="name">Incoming: Admin full access</field>
+        <field name="model_id" ref="model_corr_incoming"/>
+        <field name="domain_force">[(1,'=',1)]</field>
+        <field name="groups" eval="[(4, ref('correspondence.group_correspondence_admin'))]"/>
+    </record>
+
+    <!-- ============================================== -->
+    <!-- Правила для corr.outgoing                     -->
+    <!-- ============================================== -->
+
+    <!-- Employee: доступ к записям где он инициатор или участвует в согласовании -->
+    <record id="rule_corr_outgoing_employee" model="ir.rule">
+        <field name="name">Outgoing: Employee access (initiator or approver)</field>
+        <field name="model_id" ref="model_corr_outgoing"/>
+        <field name="domain_force">[
+            '|', '|', '|',
+            ('create_uid', '=', user.id),
+            ('additional_approver_ids', 'in', user.id),
+            ('state_agreement_line_ids.user_id', '=', user.id),
+            ('state_agreement_history_line_ids.user_id', '=', user.id)
+        ]</field>
+        <field name="groups" eval="[(4, ref('correspondence.group_correspondence_employee'))]"/>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="True"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <!-- Secretary: полный доступ ко всем записям -->
+    <record id="rule_corr_outgoing_secretary" model="ir.rule">
+        <field name="name">Outgoing: Secretary full access</field>
+        <field name="model_id" ref="model_corr_outgoing"/>
+        <field name="domain_force">[(1,'=',1)]</field>
+        <field name="groups" eval="[(4, ref('correspondence.group_correspondence_secretary'))]"/>
+    </record>
+
+    <!-- Director: полный доступ ко всем записям -->
+    <record id="rule_corr_outgoing_director" model="ir.rule">
+        <field name="name">Outgoing: Director full access</field>
+        <field name="model_id" ref="model_corr_outgoing"/>
+        <field name="domain_force">[(1,'=',1)]</field>
+        <field name="groups" eval="[(4, ref('correspondence.group_correspondence_director'))]"/>
+    </record>
+
+    <!-- Admin: полный доступ ко всем записям -->
+    <record id="rule_corr_outgoing_admin" model="ir.rule">
+        <field name="name">Outgoing: Admin full access</field>
+        <field name="model_id" ref="model_corr_outgoing"/>
+        <field name="domain_force">[(1,'=',1)]</field>
+        <field name="groups" eval="[(4, ref('correspondence.group_correspondence_admin'))]"/>
+    </record>
+
+    <!-- ============================================== -->
+    <!-- Правила для correspondence.assignment.line    -->
+    <!-- ============================================== -->
+
+    <!-- Employee: доступ к заданиям где он исполнитель, назначил, бывший исполнитель, или через incoming document -->
+    <record id="rule_assignment_line_employee" model="ir.rule">
+        <field name="name">Assignment: Employee access (executor, assigner, history or via incoming)</field>
+        <field name="model_id" ref="model_correspondence_assignment_line"/>
+        <field name="domain_force">[
+            '|', '|', '|', '|', '|',
+            ('user_id', '=', user.id),
+            ('assigner_id', '=', user.id),
+            ('executor_history_ids', 'in', user.id),
+            ('incoming_id.create_uid', '=', user.id),
+            ('incoming_id.assignment_line_ids.user_id', '=', user.id),
+            ('incoming_id.assignment_line_ids.original_user_id', '=', user.id)
+        ]</field>
+        <field name="groups" eval="[(4, ref('correspondence.group_correspondence_employee'))]"/>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="True"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <!-- Secretary: полный доступ ко всем заданиям -->
+    <record id="rule_assignment_line_secretary" model="ir.rule">
+        <field name="name">Assignment: Secretary full access</field>
+        <field name="model_id" ref="model_correspondence_assignment_line"/>
+        <field name="domain_force">[(1,'=',1)]</field>
+        <field name="groups" eval="[(4, ref('correspondence.group_correspondence_secretary'))]"/>
+    </record>
+
+    <!-- Director: полный доступ ко всем заданиям -->
+    <record id="rule_assignment_line_director" model="ir.rule">
+        <field name="name">Assignment: Director full access</field>
+        <field name="model_id" ref="model_correspondence_assignment_line"/>
+        <field name="domain_force">[(1,'=',1)]</field>
+        <field name="groups" eval="[(4, ref('correspondence.group_correspondence_director'))]"/>
+    </record>
+
+    <!-- Admin: полный доступ ко всем заданиям -->
+    <record id="rule_assignment_line_admin" model="ir.rule">
+        <field name="name">Assignment: Admin full access</field>
+        <field name="model_id" ref="model_correspondence_assignment_line"/>
+        <field name="domain_force">[(1,'=',1)]</field>
+        <field name="groups" eval="[(4, ref('correspondence.group_correspondence_admin'))]"/>
+    </record>
+
+</odoo>

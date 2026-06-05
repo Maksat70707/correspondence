@@ -1,0 +1,30 @@
+<odoo>
+    <!-- 
+        Группы БЕЗ наследования.
+        implied_ids = [(5,)] очищает старые связи из базы.
+    -->
+    
+    <!-- Исполнитель -->
+    <record id="group_correspondence_employee" model="res.groups">
+        <field name="name">Correspondence / Employee</field>
+        <field name="implied_ids" eval="[(5,)]"/>
+    </record>
+
+    <!-- Секретарь -->
+    <record id="group_correspondence_secretary" model="res.groups">
+        <field name="name">Correspondence / Secretary</field>
+        <field name="implied_ids" eval="[(5,)]"/>
+    </record>
+
+    <!-- Директор -->
+    <record id="group_correspondence_director" model="res.groups">
+        <field name="name">Correspondence / Director</field>
+        <field name="implied_ids" eval="[(5,)]"/>
+    </record>
+
+    <!-- Админ -->
+    <record id="group_correspondence_admin" model="res.groups">
+        <field name="name">Correspondence / Admin</field>
+        <field name="implied_ids" eval="[(5,)]"/>
+    </record>
+</odoo>

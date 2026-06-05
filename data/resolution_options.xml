@@ -1,0 +1,98 @@
+<odoo>
+    <record id="correspondence_res_01" model="correspondence.resolution.option">
+        <field name="name">Для работы</field>
+        <field name="report_needed">True</field>
+        <field name="days_for_completion">30</field>
+    </record>
+    <record id="correspondence_res_02" model="correspondence.resolution.option">
+        <field name="name">К сведению</field>
+        <field name="report_needed">False</field>
+        <field name="days_for_completion">1</field>
+
+    </record>
+    <record id="correspondence_res_03" model="correspondence.resolution.option">
+        <field name="name">На контроль</field>
+        <field name="report_needed">True</field>
+        <field name="days_for_completion">30</field>
+    </record>
+    <record id="correspondence_res_04" model="correspondence.resolution.option">
+        <field name="name">На рассмотрение</field>
+        <field name="report_needed">True</field>
+        <field name="days_for_completion">30</field>
+    </record>
+    <record id="correspondence_res_05" model="correspondence.resolution.option">
+        <field name="name">Подготовить ответ о ходе работы</field>
+        <field name="report_needed">True</field>
+        <field name="days_for_completion">1</field>
+    </record>
+    <record id="correspondence_res_06" model="correspondence.resolution.option">
+        <field name="name">Принято к сведению</field>
+        <field name="report_needed">False</field>
+        <field name="days_for_completion">1</field>
+    </record>
+    <record id="correspondence_res_07" model="correspondence.resolution.option">
+        <field name="name">Прошу ознакомить</field>
+        <field name="report_needed">False</field>
+        <field name="days_for_completion">1</field>
+    </record>
+    <record id="correspondence_res_08" model="correspondence.resolution.option">
+        <field name="name">Прошу разобраться</field>
+        <field name="report_needed">True</field>
+        <field name="days_for_completion">3</field>
+    </record>
+    <record id="correspondence_res_09" model="correspondence.resolution.option">
+        <field name="name">Прошу разобраться и доложить</field>
+        <field name="report_needed">True</field>
+        <field name="days_for_completion">3</field>
+    </record>
+    <record id="correspondence_res_10" model="correspondence.resolution.option">
+        <field name="name">Прошу рассмотреть и внести предложения</field>
+        <field name="report_needed">True</field>
+        <field name="days_for_completion">7</field>
+    </record>
+    <record id="correspondence_res_11" model="correspondence.resolution.option">
+        <field name="name">Рассмотреть и при необходимости оформить</field>
+        <field name="report_needed">False</field>
+        <field name="days_for_completion">1</field>
+    </record>
+    <record id="correspondence_res_12" model="correspondence.resolution.option">
+        <field name="name">Снять с контроля</field>
+        <field name="report_needed">False</field>
+        <field name="days_for_completion">1</field>
+    </record>
+    <record id="correspondence_res_13" model="correspondence.resolution.option">
+        <field name="name">Согласовано</field>
+        <field name="report_needed">False</field>
+        <field name="days_for_completion">1</field>
+    </record>
+    <record id="correspondence_res_14" model="correspondence.resolution.option">
+        <field name="name">Утверждаю</field>
+        <field name="report_needed">False</field>
+        <field name="days_for_completion">1</field>
+    </record>
+    <record id="correspondence_res_15" model="correspondence.resolution.option">
+        <field name="name">Рассмотреть</field>
+        <field name="report_needed">True</field>
+        <field name="days_for_completion">1</field>
+    </record>
+    <record id="correspondence_res_16" model="correspondence.resolution.option">
+        <field name="name">Для информации</field>
+        <field name="report_needed">False</field>
+        <field name="days_for_completion">1</field>
+    </record>
+    <record id="correspondence_res_17" model="correspondence.resolution.option">
+        <field name="name">Согласовать допуск</field>
+        <field name="report_needed">False</field>
+        <field name="days_for_completion">1</field>
+    </record>
+    <record id="correspondence_res_18" model="correspondence.resolution.option">
+        <field name="name">Вынести на Совет директоров</field>
+        <field name="report_needed">True</field>
+        <field name="days_for_completion">5</field>
+    </record>
+    <record id="correspondence_res_19" model="correspondence.resolution.option">
+        <field name="name">Для участия</field>
+        <field name="report_needed">True</field>
+        <field name="days_for_completion">5</field>
+    </record>
+</odoo>

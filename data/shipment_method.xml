@@ -1,0 +1,8 @@
+<odoo>
+    <record id="personal_email" model="correspondence.shipment.method"><field name="name">Личная электронная почта</field></record>
+    <record id="corp_email" model="correspondence.shipment.method"><field name="name">Корпоративная электронная почта</field></record>
+    <record id="odoo_notification" model="correspondence.shipment.method"><field name="name">Внутренняя уведомление Odoo</field></record>
+    <record id="whatsapp" model="correspondence.shipment.method"><field name="name">WhatsApp сообщение</field></record>
+    <record id="courier_mail" model="correspondence.shipment.method"><field name="name">Нарочно - Курьерская доставка</field></record>
+    <record id="driver_mail" model="correspondence.shipment.method"><field name="name">Нарочно - Водительская доставка</field></record>
+</odoo>
