@@ -8,7 +8,6 @@
         'base',
         'mail',
         'hr',
-        'mol',
         'report_xlsx',
         'appstream_approval',
         'contacts',
