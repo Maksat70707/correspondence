@@ -644,15 +644,13 @@ class OutgoingDocument(models.Model):
                     })
         return self
 
-    def name_get(self):
-        result = []
+    def _compute_display_name(self):
         for record in self:
             if record.subject:
                 name = f"{record.name} - {record.subject}"
             else:
                 name = f"{record.name}"
-            result.append((record.id, name))
-        return result
+            record.display_name = name
 
     # ---------------------------------------------------------
     # Хуки для appstream_approval

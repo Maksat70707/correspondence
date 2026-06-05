@@ -12,12 +12,12 @@
 
                     <group>
                         <field name="line_ids">
-                            <tree editable="bottom">
+                            <list editable="bottom">
                                 <field name="user_id"/>
                                 <field name="resolution_id"/>
                                 <field name="deadline"/>
                                 <field name="report_needed"/>
-                            </tree>
+                            </list>
                         </field>
                     </group>
                 </sheet>

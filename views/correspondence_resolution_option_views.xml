@@ -6,12 +6,12 @@
         <field name="name">correspondence.resolution.option.tree</field>
         <field name="model">correspondence.resolution.option</field>
         <field name="arch" type="xml">
-            <tree>
+            <list>
                 <field name="name"/>
                 <field name="days_for_completion"/>
                 <field name="report_needed"/>
                 <field name="active"/>
-            </tree>
+            </list>
         </field>
     </record>
 
@@ -41,7 +41,7 @@
     <record id="action_resolution_option" model="ir.actions.act_window">
         <field name="name">Резолюции</field>
         <field name="res_model">correspondence.resolution.option</field>
-        <field name="view_mode">tree,form</field>
+        <field name="view_mode">list,form</field>
     </record>
 
 </odoo>

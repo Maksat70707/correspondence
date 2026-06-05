@@ -1,14 +1,13 @@
 {
     'name': 'Correspondence',
     'summary': 'Register and track correspondence',
-    'version': '16.0.0.6',
+    'version': '19.0.1.0.0',
     'author': 'Caspiy Neft, Maksat',
     'category': 'Productivity',
     'depends': [
         'base',
         'mail',
         'hr',
-        'report_xlsx',
         'appstream_approval',
         'contacts',
         'delegation',  # для работы делегирования

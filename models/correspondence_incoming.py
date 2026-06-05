@@ -158,15 +158,13 @@ class IncomingDocument(models.Model):
         if not any(user.has_group(x) for x in xmlids):
             raise AccessError(message)
 
-    def name_get(self):
-        result = []
+    def _compute_display_name(self):
         for record in self:
             if record.subject:
                 name = f"{record.name} - {record.subject}"
             else:
                 name = f"{record.name}"
-            result.append((record.id, name))
-        return result
+            record.display_name = name
 
     # ---------------------------------------------------------
     # Attachments ownership fix

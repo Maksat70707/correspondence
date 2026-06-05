@@ -6,7 +6,7 @@
         <field name="name">correspondence.outgoing.recipients.tree</field>
         <field name="model">correspondence.outgoing.recipients</field>
         <field name="arch" type="xml">
-            <tree editable="bottom">
+            <list editable="bottom">
                 <field name="recipient"/>
                 <field name="shipment_method_ids" widget="many2many_tags"/>
                 <field name="full_name" optional="show"/>
@@ -16,7 +16,7 @@
                 <field name="odoo_user_id" optional="hide"/>
                 <field name="phone" optional="hide"/>
                 <field name="active" invisible="1"/>
-            </tree>
+            </list>
         </field>
     </record>
 
@@ -51,7 +51,7 @@
     <record id="action_outgoing_recipients" model="ir.actions.act_window">
         <field name="name">Получатели</field>
         <field name="res_model">correspondence.outgoing.recipients</field>
-        <field name="view_mode">tree,form</field>
+        <field name="view_mode">list,form</field>
     </record>
 
 </odoo>
