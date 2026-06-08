@@ -220,7 +220,6 @@
                         <!-- Вкладка: Задания -->
                         <page string="Задания" name="assignments">
                             <field name="assignment_line_ids"
-                                   context="{'default_incoming_id': active_id}"
                                    readonly="state == 'done'">
                                 <list editable="bottom"
                                       decoration-danger="is_overdue"
