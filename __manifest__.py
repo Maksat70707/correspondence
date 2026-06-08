@@ -14,6 +14,7 @@
         'delegation',  # для работы делегирования
         'portal',  # для портального подписания
         'website',  # для портальных шаблонов
+        'hr_employee_extended',  # для получения должности сотрудника
     ],
     'application': True,
     'installable': True,
