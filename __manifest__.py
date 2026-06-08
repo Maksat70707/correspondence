@@ -4,6 +4,7 @@
     'version': '19.0.1.0.0',
     'author': 'Caspiy Neft, Maksat',
     'category': 'Productivity',
+    'license': 'LGPL-3',
     'depends': [
         'base',
         'mail',
