@@ -1,4 +1,4 @@
-from odoo import api, fields, models, _
+from odoo import api, fields, models, _, _lt
 from odoo.exceptions import AccessError, UserError, ValidationError
 
 
@@ -153,7 +153,7 @@ class IncomingDocument(models.Model):
     # Helpers
     # ---------------------------------------------------------
 
-    def _require_any_group(self, xmlids, message=_("Недостаточно прав.")):
+    def _require_any_group(self, xmlids, message=_lt("Недостаточно прав.")):
         user = self.env.user
         if not any(user.has_group(x) for x in xmlids):
             raise AccessError(message)

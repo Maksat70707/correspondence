@@ -108,7 +108,7 @@ class CorrespondencePortalController(http.Controller):
             'page_name': 'correspondence_detail'
         })
 
-    @http.route(['/correspondence/sign/esp/success'], type='json', auth="user", website=True)
+    @http.route(['/correspondence/sign/esp/success'], type='jsonrpc', auth="user", website=True)
     def sign_esp_success(self, **kwargs):
         """Обработка успешного подписания ЭЦП"""
         data = json.loads(request.httprequest.data.decode('utf-8'))
