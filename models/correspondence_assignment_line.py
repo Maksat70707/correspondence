@@ -438,56 +438,6 @@ class CorrespondenceAssignmentLine(models.Model):
     # Helpers: activities
     # ---------------------------------------------------------
 
-    def _create_mail_activity(self):
-        """Создаёт activity для исполнителя задания.
-
-        date_deadline ставим на сегодня, чтобы activity отображалась 
-        в счётчике "Today", а не "Future".
-        """
-        activity_type = self.env.ref(
-            "mail.mail_activity_data_todo", raise_if_not_found=False)
-        if not activity_type:
-            return
-
-        model_id = self.env["ir.model"]._get_id(self._name)
-
-        for rec in self:
-            if not rec.user_id:
-                continue
-
-            exists = self.env["mail.activity"].sudo().search_count([
-                ("res_model", "=", self._name),
-                ("res_id", "=", rec.id),
-                ("user_id", "=", rec.user_id.id),
-                # ("activity_type_id", "=", activity_type.id), # Не фильтруем по типу, чтобы избежать дублирования при изменении типа активности
-            ])
-            if exists:
-                continue
-
-            self.env["mail.activity"].sudo().with_context(
-                disable_message_subscribe=True,
-                mail_activity_quick_update=True,
-            ).create({
-                "res_model_id": model_id,
-                "res_id": rec.id,
-                "user_id": rec.user_id.id,
-                "activity_type_id": activity_type.id,
-                "summary": _("Исполнение поручения"),
-                "note": rec.resolution_id.name if rec.resolution_id else "",
-                "date_deadline": fields.Date.context_today(self),
-                "automated": True,
-            })
-
-    def _close_mail_activity(self, user):
-        activities = self.env["mail.activity"].sudo().search([
-            ("res_model", "=", self._name),
-            ("res_id", "=", self.id),
-            ("user_id", "=", user.id),
-            ("automated", "=", True)
-        ])
-        if activities:
-            activities.action_done()
-
     def action_open_document(self):
         self.ensure_one()
         if not self.incoming_id:
@@ -523,7 +473,6 @@ class CorrespondenceAssignmentLine(models.Model):
 
         records = super().create(vals_list)
 
-        # TODO: review multi-create post-logic
         for record in records:
             # Отправляем сообщение о делегировании
             if record.delegated and record.original_user_id:
@@ -535,8 +484,10 @@ class CorrespondenceAssignmentLine(models.Model):
             # Фиксируем ownership вложений
             record._fix_attachment_ownership()
 
-            # Activity on creation
-            record._create_mail_activity()
+        # Sync execution-активити на родительских документах
+        # (Вариант B: одна активити на пару (документ, юзер) — управляется на incoming)
+        for incoming in records.mapped('incoming_id'):
+            incoming._sync_execution_activities()
 
         return records
 
@@ -600,6 +551,12 @@ class CorrespondenceAssignmentLine(models.Model):
                 vals["original_user_id"] = False
                 vals["delegated"] = False
 
+        # Проставляем completion_datetime ДО super().write() чтобы избежать
+        # рекурсивного write (который бы упёрся в блокировку "status == done"
+        # выше, потому что super().write уже применил новый статус)
+        if old_status != "done" and vals.get("status") == "done":
+            vals.setdefault("completion_datetime", fields.Datetime.now())
+
         res = super().write(vals)
 
         # Очищаем reassign_user_id после сохранения через SQL
@@ -622,15 +579,13 @@ class CorrespondenceAssignmentLine(models.Model):
             new_user = rec.user_id
             rec._post_delegation_message(original_user, new_user)
 
-        if "user_id" in vals:
-            if old_user:
-                rec._close_mail_activity(old_user)
-            rec._create_mail_activity()
+        # Sync execution-активити на родителе при смене user_id или status
+        # (Вариант B: одна активити на пару (документ, юзер) — управляется на incoming)
+        if incoming and ("user_id" in vals or "status" in vals):
+            incoming._sync_execution_activities()
 
         if old_status != "done" and vals.get("status") == "done":
-            rec.completion_datetime = fields.Datetime.now()
-            if rec.user_id:
-                rec._close_mail_activity(rec.user_id)
+            # completion_datetime уже выставлен в vals выше — не дублируем
 
             # auto-transition incoming to done when all tasks done
             if incoming and incoming.state in ('execution', 'rework'):

@@ -308,17 +308,21 @@ class CorrIncomingApproveProcessMixin(models.AbstractModel):
     def _create_activity_for_user(self, user, notif_type, reason=None):
         """Создаёт activity (действие) для пользователя"""
         self.ensure_one()
-        
+
+        # execution-активити управляются через _sync_execution_activities
+        # (Вариант B миграции: одна активити на пару (документ, юзер),
+        # вместо одной на каждую строку задания)
+        if notif_type == "execution":
+            self._sync_execution_activities()
+            return
+
         activity_type = self.env.ref('mail.mail_activity_data_todo', raise_if_not_found=False)
         if not activity_type:
             _logger.warning("Activity type 'mail.mail_activity_data_todo' not found")
             return
-        
+
         # Определяем текст activity в зависимости от типа
-        if notif_type == "execution":
-            summary = _("Требуется выполнение задания")
-            note = _("Пожалуйста, выполните назначенное задание.")
-        elif notif_type == "approved":
+        if notif_type == "approved":
             summary = _("Документ согласован")
             note = _("Документ успешно прошёл согласование.")
         elif notif_type == "rework":

@@ -217,6 +217,12 @@ class IncomingDocument(models.Model):
         import logging
         _logger = logging.getLogger(__name__)
         
+        # Запоминаем старые состояния — нужны для хука синхронизации
+        # execution-активити (Вариант B миграции)
+        old_states = {}
+        if 'state' in vals:
+            old_states = {rec.id: rec.state for rec in self}
+        
         # Обрабатываем изменения статуса в assignment_line_ids
         if 'assignment_line_ids' in vals:
             for cmd in vals['assignment_line_ids']:
@@ -248,6 +254,20 @@ class IncomingDocument(models.Model):
         # Если изменились вложения — фиксируем ownership
         if 'attachment_mail_ids' in vals or 'attachment_rest_ids' in vals:
             self._fix_attachment_ownership()
+        
+        # Хук смены состояния: триггерим sync execution-активити при переходе
+        # В/ИЗ execution/rework. Покрывает кейс перехода review→execution
+        # (где раньше активити создавались через старый _create_mail_activity)
+        # и transitions execution→done/revision/rejected где нужно закрыть.
+        if 'state' in vals:
+            for rec in self:
+                old_state = old_states.get(rec.id)
+                new_state = rec.state
+                if old_state != new_state and (
+                    new_state in ('execution', 'rework')
+                    or old_state in ('execution', 'rework')
+                ):
+                    rec._sync_execution_activities()
         
         return res
 
@@ -333,6 +353,81 @@ class IncomingDocument(models.Model):
             
             # Меняем статус на done
             self.write({"state": "done"})
+
+    # ---------------------------------------------------------
+    # Управление execution-активити (Вариант B)
+    # ---------------------------------------------------------
+
+    def _sync_execution_activities(self):
+        """
+        Единая точка управления "execution"-активити на документе.
+
+        Логика: одна активити на пару (документ, юзер) — не на каждую строку
+        задания. Активити закрывается только когда у юзера НЕТ больше pending
+        поручений на этом документе.
+
+        Вызывается из:
+        - correspondence.assignment.line.create() — на добавление строки
+        - correspondence.assignment.line.write() — на смену user_id/status
+        - corr_incoming_approve_process_mixin._create_activity_for_user() при
+          notif_type="execution" — на переход документа в execution
+
+        Сохраняет non-execution активити (например, "Документ согласован"
+        для create_uid) — закрывает только активити юзеров, которые когда-либо
+        были назначены как исполнители на этом документе.
+        """
+        self.ensure_one()
+
+        activity_type = self.env.ref(
+            'mail.mail_activity_data_todo', raise_if_not_found=False)
+        if not activity_type:
+            return
+
+        # Все автоматические активити на этом документе
+        all_auto = self.env['mail.activity'].sudo().search([
+            ('res_model', '=', self._name),
+            ('res_id', '=', self.id),
+            ('automated', '=', True),
+        ])
+
+        # Если документ не в execution/rework — закрываем execution-активити
+        # ТОЛЬКО для тех юзеров, кто был/является исполнителем (не трогаем
+        # "Документ согласован" для create_uid и подобные)
+        if self.state not in ('execution', 'rework'):
+            executor_ids = set(self.assignment_line_ids.mapped('user_id.id'))
+            executor_ids |= set(self.assignment_line_ids.mapped(
+                'original_user_id.id'))
+            executor_ids |= set(self.assignment_line_ids.mapped(
+                'executor_history_ids.id'))
+            executor_ids.discard(False)
+
+            for activity in all_auto:
+                if activity.user_id.id in executor_ids:
+                    activity.action_done()
+            return
+
+        # В execution/rework: синхронизируем по pending-поручениям
+        pending_users = self.assignment_line_ids.filtered(
+            lambda l: l.status != 'done' and l.user_id
+        ).mapped('user_id')
+
+        users_with_activity = all_auto.mapped('user_id')
+
+        # Создать активити юзерам с pending-поручениями без активити
+        for user in pending_users:
+            if user not in users_with_activity:
+                self.activity_schedule(
+                    activity_type_id=activity_type.id,
+                    user_id=user.id,
+                    summary=_("Требуется выполнение задания"),
+                    note=_("Пожалуйста, выполните назначенные вам поручения по документу."),
+                )
+
+        # Закрыть активити юзеров без pending-поручений
+        # (юзер закончил все свои поручения, либо был переназначен/удалён)
+        for activity in all_auto:
+            if activity.user_id not in pending_users:
+                activity.action_done()
 
     # ---------------------------------------------------------
     # Действия (кнопки для специфичных случаев)
