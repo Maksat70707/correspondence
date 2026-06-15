@@ -36,7 +36,7 @@
                 <field name="create_uid"/>
                 <field name="state"/>
                 <templates>
-                    <t t-name="kanban-box">
+                    <t t-name="card">
                         <div t-attf-class="oe_kanban_global_click">
                             <div class="oe_kanban_details">
                                 <strong class="o_kanban_record_title">
@@ -448,12 +448,7 @@
                 <!-- ========================================= -->
                 <!-- Chatter                                   -->
                 <!-- ========================================= -->
-                <div class="o_attachment_preview"/>
-                <div class="oe_chatter">
-                    <field name="message_follower_ids"/>
-                    <field name="activity_ids"/>
-                    <field name="message_ids"/>
-                </div>
+                <chatter/>
 
             </form>
         </field>

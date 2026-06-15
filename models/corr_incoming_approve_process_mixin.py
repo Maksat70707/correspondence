@@ -258,7 +258,7 @@ class CorrIncomingApproveProcessMixin(models.AbstractModel):
 
     def check_group(self, group_ids):
         """Получает пользователей из групп безопасности"""
-        return group_ids.users
+        return group_ids.user_ids
 
     def action_notify(self, notif_type, approver_id=None, reason=None):
         """

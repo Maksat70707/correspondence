@@ -28,11 +28,7 @@
 
                 </sheet>
 
-                <div class="oe_chatter">
-                    <field name="message_follower_ids"/>
-                    <field name="activity_ids"/>
-                    <field name="message_ids"/>
-                </div>
+                <chatter/>
             </form>
         </field>
     </record>
@@ -54,11 +50,15 @@
         </field>
     </record>
 
-    <!-- ACTION -->
+    <!-- ACTION: базовый (kanban с переходом на документ) -->
+    <!-- Ограничен domain'ом: сотрудник видит только свои задания + те, что назначил сам, + те, где был в истории исполнителей -->
     <record id="action_correspondence_assignment_line" model="ir.actions.act_window">
         <field name="name">Поручения</field>
         <field name="res_model">correspondence.assignment.line</field>
         <field name="view_mode">kanban,list</field>
+        <field name="search_view_id" ref="view_assignment_tasks_search"/>
+        <field name="domain">['|', '|', ('user_id', '=', uid), ('assigner_id', '=', uid), ('executor_history_ids', 'in', uid)]</field>
+        <field name="context">{'search_default_filter_assigned_to_me': 1}</field>
     </record>
 
     <!-- KANBAN -->
@@ -74,7 +74,7 @@
                 class="o_kanban_small_column">
 
                 <templates>
-                    <t t-name="kanban-box">
+                    <t t-name="card">
                         <div class="oe_kanban_card">
 
                             <!-- КЛИКАБЕЛЬНАЯ ЗОНА -->
@@ -122,7 +122,7 @@
             <list create="false" delete="false"
                   decoration-danger="is_overdue"
                   decoration-success="status == 'done'">
-                <field name="is_overdue" invisible="1"/>
+                <field name="is_overdue" column_invisible="1"/>
                 <field name="incoming_id"/>
                 <field name="incoming_state"/>
                 <!-- <field name="incoming_partner_id"/> -->
@@ -178,7 +178,7 @@
                   decoration-danger="is_overdue"
                   decoration-success="status == 'done'"
                   decoration-muted="status == 'new'">
-                <field name="is_overdue" invisible="1"/>
+                <field name="is_overdue" column_invisible="1"/>
                 <field name="incoming_id" string="Документ"/>
                 <field name="resolution_id" string="Резолюция"/>
                 <field name="user_id" string="Исполнитель" widget="many2one_avatar_user"/>
@@ -269,7 +269,7 @@
                   editable="bottom"
                   delete="false"
                   default_order="id desc">
-                <field name="is_overdue" invisible="1"/>
+                <field name="is_overdue" column_invisible="1"/>
                 <field name="user_id" string="Исполнитель" widget="many2one_avatar_user"/>
                 <field name="task" string="Задача/комментарий"/>
                 <field name="resolution_id" string="Резолюция"/>
@@ -331,11 +331,7 @@
                     </notebook>
                 </sheet>
 
-                <div class="oe_chatter">
-                    <field name="message_follower_ids"/>
-                    <field name="activity_ids"/>
-                    <field name="message_ids"/>
-                </div>
+                <chatter/>
             </form>
         </field>
     </record>

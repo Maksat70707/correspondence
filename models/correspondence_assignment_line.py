@@ -459,7 +459,7 @@ class CorrespondenceAssignmentLine(models.Model):
                 ("res_model", "=", self._name),
                 ("res_id", "=", rec.id),
                 ("user_id", "=", rec.user_id.id),
-                ("state", "=", "planned"),
+                # ("activity_type_id", "=", activity_type.id), # Не фильтруем по типу, чтобы избежать дублирования при изменении типа активности
             ])
             if exists:
                 continue
@@ -483,7 +483,7 @@ class CorrespondenceAssignmentLine(models.Model):
             ("res_model", "=", self._name),
             ("res_id", "=", self.id),
             ("user_id", "=", user.id),
-            ("state", "=", "planned"),
+            ("automated", "=", True)
         ])
         if activities:
             activities.action_done()
@@ -505,37 +505,40 @@ class CorrespondenceAssignmentLine(models.Model):
     # ORM
     # ---------------------------------------------------------
 
-    @api.model
-    def create(self, vals):
-        if not vals.get("assigner_id"):
-            vals["assigner_id"] = self.env.user.id
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if not vals.get("assigner_id"):
+                vals["assigner_id"] = self.env.user.id
 
-        # Проверяем делегирование
-        original_user_id = vals.get("user_id")
-        if original_user_id:
-            new_user_id, delegated = self._check_delegation(original_user_id)
+            # Проверяем делегирование
+            original_user_id = vals.get("user_id")
+            if original_user_id:
+                new_user_id, delegated = self._check_delegation(original_user_id)
 
-            if delegated:
-                vals["original_user_id"] = original_user_id
-                vals["user_id"] = new_user_id
-                vals["delegated"] = True
+                if delegated:
+                    vals["original_user_id"] = original_user_id
+                    vals["user_id"] = new_user_id
+                    vals["delegated"] = True
 
-        record = super().create(vals)
+        records = super().create(vals_list)
 
-        # Отправляем сообщение о делегировании
-        if record.delegated and record.original_user_id:
-            original_user = self.env["res.users"].browse(
-                record.original_user_id.id)
-            new_user = record.user_id
-            record._post_delegation_message(original_user, new_user)
+        # TODO: review multi-create post-logic
+        for record in records:
+            # Отправляем сообщение о делегировании
+            if record.delegated and record.original_user_id:
+                original_user = self.env["res.users"].browse(
+                    record.original_user_id.id)
+                new_user = record.user_id
+                record._post_delegation_message(original_user, new_user)
 
-        # Фиксируем ownership вложений
-        record._fix_attachment_ownership()
+            # Фиксируем ownership вложений
+            record._fix_attachment_ownership()
 
-        # Activity on creation
-        record._create_mail_activity()
+            # Activity on creation
+            record._create_mail_activity()
 
-        return record
+        return records
 
     def write(self, vals):
         if len(self) > 1:

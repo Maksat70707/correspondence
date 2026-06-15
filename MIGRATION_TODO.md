@@ -307,3 +307,40 @@ UX-разграничение: пользователь без нужной ро
 Низкий. Все 14 отчётов имеют одинаковые группы, никто из текущих 
 ролей разграничения не потеряет. Делать когда появится отчёт с 
 действительно ограниченной аудиторией.
+
+
+# Task: Fix Odoo 17+ list view invisible→column_invisible migration
+
+## Background
+In Odoo 17+, the `invisible="1"` attribute on a `<field>` inside a `<list>` (tree) view no longer hides the column — it only hides cell content while keeping the column header visible. To fully hide a column, use `column_invisible="1"`.
+
+This behavior change does NOT affect:
+- `invisible` on fields inside `<form>`, `<group>`, `<sheet>` (still works as before)
+- `invisible` with row-dependent expressions inside `<list>` (e.g. `invisible="not delegated"` — those are per-row and should stay as `invisible`)
+
+## What to fix
+Inside any `<list>...</list>` block, find fields with STATIC `invisible="1"` (literal `"1"` or `"True"` or `"true"`, no dynamic expression) and rename to `column_invisible="1"`.
+
+Do NOT touch:
+- `invisible="<expression>"` where the expression references a row-level field (like `invisible="not delegated"`, `invisible="status == 'done'"`) — these are per-row conditions and should stay
+- `invisible` on fields outside `<list>` blocks
+- `column_invisible` attributes (already correct)
+- `<button>` elements with `invisible="1"` inside list rows — leave alone unless asked
+
+## How to identify "static invisible=1"
+Match exactly: `invisible="1"`, `invisible="True"`, `invisible="true"`, `invisible="0"` (rare, skip), `invisible='1'` (single quotes too).
+
+Anything more complex like `invisible="not delegated"`, `invisible="state == 'draft'"` — SKIP.
+
+## Process
+1. From the module root, run:
+```
+   grep -rn 'invisible=' --include="*.xml" .
+```
+2. For each file, parse the XML and identify `<field>` elements that are descendants of a `<list>` (tree) element and have a static `invisible` value as defined above.
+3. Rename the attribute name from `invisible` to `column_invisible`. Keep the value as-is.
+4. After editing, re-grep and produce a summary:
+   - File path → number of attributes renamed
+   - List of fields where the change was made (file:line, field name)
+
+Do not commit. Leave changes in working tree for review.

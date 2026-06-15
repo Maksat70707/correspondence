@@ -15,7 +15,7 @@
                 <field name="email" optional="show"/>
                 <field name="odoo_user_id" optional="hide"/>
                 <field name="phone" optional="hide"/>
-                <field name="active" invisible="1"/>
+                <field name="active" column_invisible="1"/>
             </list>
         </field>
     </record>

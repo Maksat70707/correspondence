@@ -998,7 +998,7 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
         return approval_groups
 
     def check_group(self, group_ids):
-        return group_ids.users
+        return group_ids.user_ids
 
     def action_notify(self, notif_type, approver_id=None, reason=None):
         """Отправка уведомлений."""
