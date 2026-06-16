@@ -1,6 +1,7 @@
 from odoo import api, fields, models, _
 from odoo.exceptions import AccessError, ValidationError
 from datetime import timedelta
+from markupsafe import Markup
 
 
 class CorrespondenceAssignmentLine(models.Model):
@@ -222,12 +223,15 @@ class CorrespondenceAssignmentLine(models.Model):
                 _logger.warning(f"У пользователя {assigner.name} нет partner_id")
                 continue
 
+            # Получаем base URL для построения корректных ссылок (Odoo 17+ формат)
+            base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url', '')
+
             # Формируем текст сообщения
             message_lines = []
             for assignment in assigner_assignments:
                 executor_name = assignment.user_id.name or ''
                 resolution_name = assignment.resolution_id.name or ''
-                
+
                 # Определяем текст статуса
                 if assignment.status == 'done':
                     status_text = 'выполнил(а)'
@@ -238,39 +242,50 @@ class CorrespondenceAssignmentLine(models.Model):
 
                 if assignment.incoming_id:
                     incoming_name = assignment.incoming_id.name or ''
-                    incoming_rec_id = assignment.incoming_id.id
-                    line = f"{executor_name} {status_text} задачу «{resolution_name}» от входящего письма <a href='/web#id={incoming_rec_id}&model=corr.incoming'>{incoming_name}</a>"
+                    # Odoo 17+ URL: /odoo/<model>/<id> — без `#` и `&`, чтобы
+                    # HTML-санитайзер Discuss-канала не реджектил весь блок
+                    url = f"{base_url}/odoo/corr.incoming/{assignment.incoming_id.id}"
+                    line = (
+                        f"• {executor_name} {status_text} задачу «{resolution_name}» "
+                        f'от входящего письма <a href="{url}">{incoming_name}</a>'
+                    )
                 else:
-                    line = f"{executor_name} {status_text} задачу «{resolution_name}»"
+                    line = f"• {executor_name} {status_text} задачу «{resolution_name}»"
                 message_lines.append(line)
 
             if message_lines:
-                # Формируем HTML сообщение
-                message_body = "<p><b>Отчёт по заданиям:</b></p><ul>"
-                for line in message_lines:
-                    message_body += f"<li>{line}</li>"
-                message_body += "</ul>"
+                # Простая HTML-разметка, без <ul>/<li> — Discuss их иногда не рендерит.
+                # <br/> и <b> поддерживаются стабильно.
+                message_body = "<b>Отчёт по заданиям:</b><br/>" + "<br/>".join(message_lines)
 
                 _logger.info(f"Отправляю сообщение пользователю {assigner.name} через OdooBot")
 
-                # Находим или создаём приватный канал между OdooBot и пользователем
-                channel = self.env['mail.channel'].sudo().search([
+                # Находим существующий DM-канал между OdooBot и пользователем.
+                # channel_partner_ids — related M2M, search через неё работает.
+                channel = self.env['discuss.channel'].sudo().search([
                     ('channel_type', '=', 'chat'),
                     ('channel_partner_ids', 'in', [odoobot.id]),
                     ('channel_partner_ids', 'in', [assigner.partner_id.id]),
                 ], limit=1)
 
                 if not channel:
-                    # Создаём новый приватный чат
-                    channel = self.env['mail.channel'].sudo().create({
+                    # Создаём новый приватный чат. В Odoo 17+ участники задаются
+                    # через channel_member_ids (One2many к discuss.channel.member),
+                    # а не через related channel_partner_ids.
+                    channel = self.env['discuss.channel'].sudo().create({
                         'name': f'OdooBot, {assigner.name}',
                         'channel_type': 'chat',
-                        'channel_partner_ids': [(4, odoobot.id), (4, assigner.partner_id.id)],
+                        'channel_member_ids': [
+                            (0, 0, {'partner_id': odoobot.id}),
+                            (0, 0, {'partner_id': assigner.partner_id.id}),
+                        ],
                     })
 
-                # Отправляем сообщение от имени OdooBot
+                # Отправляем сообщение от имени OdooBot.
+                # Markup() помечает строку как безопасный HTML — без него Odoo
+                # экранирует все теги и пользователь видит "<p><b>..." как текст.
                 channel.sudo().with_context(mail_create_nosubscribe=True).message_post(
-                    body=message_body,
+                    body=Markup(message_body),
                     message_type='comment',
                     subtype_xmlid='mail.mt_comment',
                     author_id=odoobot.id,
@@ -408,10 +423,10 @@ class CorrespondenceAssignmentLine(models.Model):
         """
         if self.incoming_id:
             self.incoming_id.message_post(
-                body=_(
+                body=Markup(_(
                     "Задание делегировано: %(original)s → %(new)s<br/>"
                     "Резолюция: %(resolution)s"
-                ) % {
+                )) % {
                     'original': original_user.name,
                     'new': new_user.name,
                     'resolution': self.resolution_id.name if self.resolution_id else '',
@@ -513,28 +528,40 @@ class CorrespondenceAssignmentLine(models.Model):
             vals.pop('reassign_user_id')
 
         # ---- Блокировка при статусе Выполнено ----
+        # Whitelist системных полей: их разрешено писать даже на done-записях
+        # (нужно для cron'а уведомлений и подобной служебной логики).
+        # Пользовательские поля (resolution_id, deadline, report, etc.) — блокируем.
+        _SYSTEM_FIELDS_ALLOWED_AFTER_DONE = {
+            'needs_notification',
+            'last_notified_status',
+        }
         if rec.status == 'done':
-            raise AccessError(
-                _("Задание выполнено. Редактирование запрещено."))
+            user_fields = set(vals) - _SYSTEM_FIELDS_ALLOWED_AFTER_DONE
+            if user_fields:
+                raise AccessError(
+                    _("Задание выполнено. Редактирование запрещено."))
 
         # ---- permissions ----
-        # director/admin: everything
-        if not rec._is_director_or_admin():
-            # assigner can edit line (business choice)
-            if rec.assigner_id == current_user:
-                pass
-            # executor can edit only limited fields
-            elif rec.user_id == current_user or current_user in rec.executor_history_ids:
-                allowed = {"status", "report",
-                           "attachment_ids", "completion_datetime",
-                           "reassign_user_id", "user_id", "executor_history_ids"}
-                illegal = set(vals) - allowed
-                if illegal:
+        # В sudo-контексте (cron, системные процессы) permission-проверки пропускаются.
+        # sudo() — это контракт "выполняем от системного user'а, доверяем вызывающему".
+        if not self.env.su:
+            # director/admin: everything
+            if not rec._is_director_or_admin():
+                # assigner can edit line (business choice)
+                if rec.assigner_id == current_user:
+                    pass
+                # executor can edit only limited fields
+                elif rec.user_id == current_user or current_user in rec.executor_history_ids:
+                    allowed = {"status", "report",
+                               "attachment_ids", "completion_datetime",
+                               "reassign_user_id", "user_id", "executor_history_ids"}
+                    illegal = set(vals) - allowed
+                    if illegal:
+                        raise AccessError(
+                            _("Вы можете редактировать только свои задания. Поля статус, отчет и вложения."))
+                else:
                     raise AccessError(
-                        _("Вы можете редактировать только свои задания. Поля статус, отчет и вложения."))
-            else:
-                raise AccessError(
-                    _("Вы не можете редактировать чужую задачу."))
+                        _("Вы не можете редактировать чужую задачу."))
 
         old_user = rec.user_id
         old_status = rec.status
@@ -553,7 +580,9 @@ class CorrespondenceAssignmentLine(models.Model):
 
         # Проставляем completion_datetime ДО super().write() чтобы избежать
         # рекурсивного write (который бы упёрся в блокировку "status == done"
-        # выше, потому что super().write уже применил новый статус)
+        # выше, потому что super().write уже применил новый статус).
+        # completion_datetime ставится ТОЛЬКО при переходе в done — отменённое
+        # задание не считается выполненным.
         if old_status != "done" and vals.get("status") == "done":
             vals.setdefault("completion_datetime", fields.Datetime.now())
 
@@ -584,12 +613,15 @@ class CorrespondenceAssignmentLine(models.Model):
         if incoming and ("user_id" in vals or "status" in vals):
             incoming._sync_execution_activities()
 
-        if old_status != "done" and vals.get("status") == "done":
-            # completion_datetime уже выставлен в vals выше — не дублируем
-
-            # auto-transition incoming to done when all tasks done
-            if incoming and incoming.state in ('execution', 'rework'):
-                if all(line.status == "done" for line in incoming.assignment_line_ids):
-                    incoming._auto_transition_to_done()
+        # Auto-transition документа в done когда все задания в терминальном статусе.
+        # Терминальные = выполнено ИЛИ отменено. Триггерим только при переходе
+        # из не-терминального статуса в терминальный (чтобы не дёргать на каждый write).
+        TERMINAL_STATUSES = ("done", "cancelled")
+        new_status = vals.get("status")
+        if (old_status not in TERMINAL_STATUSES
+                and new_status in TERMINAL_STATUSES
+                and incoming and incoming.state in ('execution', 'rework')):
+            if all(line.status in TERMINAL_STATUSES for line in incoming.assignment_line_ids):
+                incoming._auto_transition_to_done()
 
         return res

@@ -1,5 +1,6 @@
 from odoo import api, fields, models, _, _lt
 from odoo.exceptions import AccessError, UserError, ValidationError
+from markupsafe import Markup
 
 
 class IncomingDocument(models.Model):
@@ -106,12 +107,15 @@ class IncomingDocument(models.Model):
 
     @api.depends("assignment_line_ids.status")
     def _compute_all_assignments_done(self):
+        # Терминальные статусы поручения: выполнено или отменено.
+        # Документ должен автозакрываться, когда все строки в одном из них.
+        TERMINAL_STATUSES = ("done", "cancelled")
         for rec in self:
             if not rec.assignment_line_ids:
                 rec.all_assignments_done = False
             else:
                 rec.all_assignments_done = all(
-                    l.status == "done" for l in rec.assignment_line_ids)
+                    l.status in TERMINAL_STATUSES for l in rec.assignment_line_ids)
                 
                 
     # Computed поля для видимости колонок в таблице получателей
@@ -290,7 +294,7 @@ class IncomingDocument(models.Model):
     def _on_reject(self, old_state=None, reason=None):
         """При отклонении документа"""
         self.message_post(
-            body=_("Документ отклонён.<br/><b>Причина:</b> %s") % (reason or _("Не указана")),
+            body=Markup(_("Документ отклонён.<br/><b>Причина:</b> %s")) % (reason or _("Не указана")),
             message_type='notification',
             subtype_xmlid='mail.mt_note',
         )
@@ -298,7 +302,7 @@ class IncomingDocument(models.Model):
     def _on_return(self, new_state=None, old_state=None, reason=None):
         """При возврате документа на доработку"""
         self.message_post(
-            body=_("Документ возвращён на доработку.<br/><b>Причина:</b> %s") % (reason or _("Не указана")),
+            body=Markup(_("Документ возвращён на доработку.<br/><b>Причина:</b> %s")) % (reason or _("Не указана")),
             message_type='notification',
             subtype_xmlid='mail.mt_note',
         )
@@ -322,8 +326,9 @@ class IncomingDocument(models.Model):
 
     def _auto_transition_to_done(self):
         """
-        Автоматический переход в Завершено когда все задания выполнены.
-        Вызывается из assignment_line при статусе done.
+        Автоматический переход в Завершено когда все задания в терминальном
+        статусе (выполнено или отменено).
+        Вызывается из assignment_line при изменении статуса задания.
         """
         self.ensure_one()
         if self.state not in ('execution', 'rework'):
@@ -332,9 +337,10 @@ class IncomingDocument(models.Model):
         if not self.assignment_line_ids:
             return
 
-        if all(line.status == "done" for line in self.assignment_line_ids):
+        # Терминальные статусы задания: либо выполнено, либо отменено.
+        if all(line.status in ("done", "cancelled") for line in self.assignment_line_ids):
             self.message_post(
-                body=_("Все задания выполнены. Документ автоматически завершён."),
+                body=_("Все задания завершены. Документ автоматически закрыт."),
                 message_type='notification',
                 subtype_xmlid='mail.mt_note',
             )
@@ -406,9 +412,11 @@ class IncomingDocument(models.Model):
                     activity.action_done()
             return
 
-        # В execution/rework: синхронизируем по pending-поручениям
+        # В execution/rework: синхронизируем по pending-поручениям.
+        # Терминальные статусы (done, cancelled) исключаются — у юзера с такими
+        # поручениями нет работы по документу.
         pending_users = self.assignment_line_ids.filtered(
-            lambda l: l.status != 'done' and l.user_id
+            lambda l: l.status not in ('done', 'cancelled') and l.user_id
         ).mapped('user_id')
 
         users_with_activity = all_auto.mapped('user_id')
@@ -513,7 +521,7 @@ class IncomingDocument(models.Model):
             })
 
         self.message_post(
-            body=_("Отправлено на доработку задач.<br/><b>Причина:</b> %s") % (reason or ""),
+            body=Markup(_("Отправлено на доработку задач.<br/><b>Причина:</b> %s")) % (reason or ""),
             message_type='notification',
             subtype_xmlid='mail.mt_note',
         )
