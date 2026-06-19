@@ -93,13 +93,13 @@
                             confirm="Подтвердить согласование?"/>
 
                     <!-- Утвердить с ЭЦП (approval) - виджет для NCALayer -->
-                    <widget name="sign_esp"
+                    <widget name="ncalayer_sign_button"
                             string="Утвердить с ЭЦП"
                             highlight="True"
                             invisible="not button_approve_enabled or state != 'approval' or not user_esp"/>
 
                     <!-- Подписать с ЭЦП (approval_medical_examination) - виджет для NCALayer -->
-                    <widget name="sign_esp"
+                    <widget name="ncalayer_sign_button"
                             string="Подписать с ЭЦП"
                             highlight="True"
                             invisible="not button_approve_enabled or state != 'approval_medical_examination' or not user_esp"/>
@@ -257,9 +257,11 @@
                             <field name="create_date" string="Дата создания" readonly="1"/>
                         </group>
                         <group string="Согласование">
+                            <field name="available_signer_ids" invisible="1"/>
                             <field name="esp_signer_id"
                                     readonly="state != 'draft'"
                                     options="{'no_create': True}"
+                                    domain="[('id', 'in', available_signer_ids)]"
                                     placeholder="Выберите утверждающего..."/>
                             <field name="additional_approver_ids"
                                     widget="many2many_tags"
@@ -325,6 +327,7 @@
                     <field name="show_rus_fields" invisible="1"/>
                     <field name="show_kaz_fields" invisible="1"/>
                     <field name="show_employee_fields" invisible="1"/>
+                    <field name="available_medical_worker_ids" invisible="1"/>
 
                     
                     <notebook>
@@ -359,7 +362,7 @@
                                 <field name="act_date" invisible="not show_medical_examination" readonly="state != 'draft'"/>
                                 <field name="reason_for_medical_examination_rus" invisible="not show_medical_examination or not show_rus_fields" readonly="state != 'draft'"/>
                                 <field name="reason_for_medical_examination_kaz" invisible="not show_medical_examination or not show_kaz_fields" readonly="state != 'draft'"/>
-                                <field name="medical_worker_id" invisible="not show_medical_examination" readonly="state != 'draft'"/>
+                                <field name="medical_worker_id" invisible="not show_medical_examination" readonly="state != 'draft'" domain="[('id', 'in', available_medical_worker_ids)]" options="{'no_create': True}" placeholder="Выберите портального пользователя..."/>
                                 <field name="medical_assessment_refusal" invisible="not show_medical_examination or not medical_assessment_refusal" readonly="state != 'draft'"/>
                             </group>
                             <group> <!-- Предложение о работе -->
@@ -483,6 +486,15 @@
                 <filter string="Статус" name="group_state" context="{'group_by': 'state'}"/>
                 <filter string="Инициатор" name="group_initiator" context="{'group_by': 'create_uid'}"/>
                 <filter string="Дата создания" name="group_date" context="{'group_by': 'create_date:month'}"/>
+                <separator/>
+                <filter name="activities_my" string="С моими активити"
+                        domain="[('activity_user_id', '=', uid)]"/>
+                <filter name="activities_overdue" string="Просроченные активити"
+                        domain="[('my_activity_date_deadline', '&lt;', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter name="activities_today" string="Активити на сегодня"
+                        domain="[('my_activity_date_deadline', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter name="activities_upcoming_all" string="Будущие активити"
+                        domain="[('my_activity_date_deadline', '&gt;', context_today().strftime('%Y-%m-%d'))]"/>
             </search>
         </field>
     </record>

@@ -1,7 +1,8 @@
+import base64
 from odoo import api, fields, models, _
 from odoo.exceptions import AccessError, UserError, ValidationError
 from datetime import datetime
-
+from markupsafe import Markup
 
 class OutgoingDocument(models.Model):
     _name = "corr.outgoing"
@@ -83,7 +84,6 @@ class OutgoingDocument(models.Model):
         "outgoing_id",
         "user_id",
         string="Дополнительные согласующие",
-        tracking=True,
         help="Согласующие на этапе 'Согласование' (после начальника инициатора)",
     )
 
@@ -91,6 +91,13 @@ class OutgoingDocument(models.Model):
         comodel_name="res.users",
         string="Утверждающий сотрудник",
         required=True,
+    )
+
+    available_signer_ids = fields.Many2many(
+        "res.users",
+        compute="_compute_available_signer_ids",
+        compute_sudo=True,
+        string="Доступные утверждающие",
     )
 
     # Исходящее письмо для подписания (только один файл)
@@ -250,6 +257,12 @@ class OutgoingDocument(models.Model):
         readonly=True,
     )
 
+    available_medical_worker_ids = fields.Many2many(
+        "res.partner",
+        compute="_compute_available_medical_worker_ids",
+        compute_sudo=True,
+        string="Доступные мед. работники",
+    )
     medical_assessment_refusal = fields.Boolean(
         string="Отказ от медицинского освидетельствования",
     )
@@ -361,6 +374,8 @@ class OutgoingDocument(models.Model):
     vacation_end_date = fields.Date(
         string="Дата окончания отпуска",
     )
+    state_agreement_line_ids = fields.One2many(tracking=False)
+    state_agreement_history_line_ids = fields.One2many(tracking=False)
 
     # ---------------------------------------------------------
     # Computed поля
@@ -475,24 +490,29 @@ class OutgoingDocument(models.Model):
         guarantee_type = self.env.ref('correspondence.guarantee', raise_if_not_found=False)
         for rec in self:
             rec.show_guarantee = (rec.type_id == guarantee_type)
+    @api.depends('language')
     def _compute_show_rus_fields(self):
         """Проверяет, нужно ли показывать русские поля"""
         for rec in self:
             rec.show_rus_fields = rec.language in ('russian', 'bilingual2')
+    @api.depends('language')
     def _compute_show_kaz_fields(self):
         """Проверяет, нужно ли показывать казахские поля"""
         for rec in self:
             rec.show_kaz_fields = rec.language in ('kazakh', 'bilingual1')
+    @api.depends('current_salary')
     def _compute_is_vahta(self):
         """Проверяет, является ли сотрудник вахтовиком"""
         for rec in self:
             rec.is_vahta = rec.current_salary < 25000
+    @api.depends('show_simple', 'show_guarantee', 'show_change_conditions')
     def _compute_show_main_attachment(self):
         """Проверяет, нужно ли показывать поле с основным вложением для подписания"""
         for rec in self:
             rec.show_main_attachment = (rec.show_simple or
                                         rec.show_guarantee or
                                         rec.show_change_conditions)
+    @api.depends('show_explanation', 'show_medical_examination', 'show_medical_checkup', 'show_reference')
     def _compute_show_employee_fields(self):
         """Проверяет, нужно ли показывать поля с данными сотрудника"""
         for rec in self:
@@ -513,6 +533,22 @@ class OutgoingDocument(models.Model):
                         and line.need_esp):
                     rec.user_esp = True
                     break
+
+    @api.depends('type_id', 'type_id.esp_signer_ids')
+    def _compute_available_signer_ids(self):
+        all_users = self.env['res.users'].sudo().search([])
+        for rec in self:
+            if rec.type_id and rec.type_id.esp_signer_ids:
+                rec.available_signer_ids = rec.type_id.esp_signer_ids
+            else:
+                rec.available_signer_ids = all_users
+                
+    @api.onchange('type_id')
+    def _onchange_type_id_clear_signer(self):
+        """Сбрасываем выбранного утверждающего, если он не в списке для нового типа."""
+        if self.esp_signer_id and self.type_id and self.type_id.esp_signer_ids:
+            if self.esp_signer_id not in self.type_id.esp_signer_ids:
+                self.esp_signer_id = False
 
     @api.depends_context("uid")
     @api.depends("create_uid")
@@ -547,6 +583,24 @@ class OutgoingDocument(models.Model):
             else:
                 rec.is_employee_signer = False
 
+    @api.depends('type_id')
+    def _compute_available_medical_worker_ids(self):
+        """
+        Возвращает партнёров, привязанных к портальным пользователям.
+        Используется только во view как источник domain для medical_worker_id.
+        """
+        portal_group = self.env.ref('base.group_portal', raise_if_not_found=False)
+        if portal_group:
+            portal_users = self.env['res.users'].sudo().search([
+                ('group_ids', 'in', portal_group.id),
+                ('active', '=', True),
+            ])
+            partners = portal_users.partner_id.filtered(lambda p: not p.is_company)
+        else:
+            partners = self.env['res.partner']
+        for rec in self:
+            rec.available_medical_worker_ids = partners
+            
     def action_refuse_medical_examination(self):
         """
         Отказ сотрудника от прохождения мед. освидетельствования.
@@ -590,12 +644,6 @@ class OutgoingDocument(models.Model):
         # Переход через единую логику
         self._process_post_approval(approver)
 
-    @api.onchange('type_id')
-    def _onchange_type_id(self):
-        """Обновляет domain для esp_signer_id при смене типа письма"""
-        if self.type_id and self.type_id.esp_signer_ids:
-            return {'domain': {'esp_signer_id': [('id', 'in', self.type_id.esp_signer_ids.ids)]}}
-        return {'domain': {'esp_signer_id': []}}
 
     @api.constrains('attachment_to_sign_ids')
     def _check_single_attachment_to_sign(self):
@@ -686,6 +734,81 @@ class OutgoingDocument(models.Model):
         """Вызывается после полного согласования (переход в done)"""
         pass
 
+    # ---------------------------------------------------------
+    # ЭЦП — подготовка документа для подписания
+    # ---------------------------------------------------------
+    def _get_signing_document(self):
+        """
+        Готовит документ для подписания через ЭЦП (CMS).
+        Вызывается из CorrespondenceSignEsp.get_sign_type.
+
+        Возвращает base64-encoded байты документа или False.
+
+        Приоритет источников:
+        1. Уже подписанная копия из appstream.approval.esp.attachment_ids —
+           для последовательного подписания (med. освидетельствование:
+           второй и третий подписант подписывают результат первого)
+        2. Файл из attachment_to_sign_ids — пользователь приложил вручную
+           (обязательно для type=simple, опционально для остальных)
+        3. Сгенерированный PDF из шаблона типа документа (medical_checkup,
+           explanation, medical_examination, job_offer, reference)
+        """
+        self.ensure_one()
+
+        # 1. Уже подписанная копия — для последовательных подписантов
+        approval_esp = self.env['appstream.approval.esp'].sudo().search(
+            [('model', '=', self._name), ('res_id', '=', self.id)],
+            order='id desc', limit=1,
+        )
+        if approval_esp and approval_esp.attachment_ids:
+            return approval_esp.attachment_ids[0].datas
+
+        # 2. Приложенный пользователем файл
+        if self.attachment_to_sign_ids:
+            return self.attachment_to_sign_ids[:1].datas
+
+        # 3. Сгенерированный из шаблона отчёт
+        report = self._get_signing_report()
+        if not report:
+            return False
+
+        pdf_bytes, _ext = report.sudo().render_docx(
+            report.report_name, [self.id], data={},
+        )
+        if not pdf_bytes:
+            return False
+        return base64.b64encode(pdf_bytes)
+
+    def _get_signing_report(self):
+        """
+        Возвращает ir.actions.report для текущего типа документа.
+
+        У типов с языковыми вариантами (medical_examination, job_offer,
+        reference) берём русскую версию. Для типов без шаблонного отчёта
+        (simple, change_conditions, guarantee) возвращает False — там
+        ожидается attachment_to_sign_ids.
+        """
+        self.ensure_one()
+
+        type_to_report = {
+            'correspondence.medical_checkup':     'correspondence.correspondence_medical_checkup_pdf',
+            'correspondence.explanation':         'correspondence.correspondence_explanation_request_pdf',
+            'correspondence.medical_examination': 'correspondence.correspondence_medical_examination_pdf',
+            'correspondence.job_offer':           'correspondence.correspondence_job_offer_pdf',
+            'correspondence.reference':           'correspondence.correspondence_reference_letter_pdf',
+        }
+
+        if not self.type_id:
+            return False
+
+        type_xmlid = self.type_id.get_external_id().get(self.type_id.id)
+        report_xmlid = type_to_report.get(type_xmlid)
+        if not report_xmlid:
+            return False
+
+        return self.env.ref(report_xmlid, raise_if_not_found=False)
+    
+
     def _on_reject(self, old_state=None, reason=None):
         """При отклонении документа согласующими"""
         current_coordinator = self.get_current_coordinator() if hasattr(self, "get_current_coordinator") else None
@@ -703,7 +826,7 @@ class OutgoingDocument(models.Model):
         self.sudo().state_agreement_line_ids.unlink()
 
         self.message_post(
-            body=_("Документ отклонён.<br/><b>Причина:</b> %s") % (reason or _("Не указана")),
+            body=Markup(_("Документ отклонён.<br/><b>Причина:</b> %s")) % (reason or _("Не указана")),
             message_type='notification',
             subtype_xmlid='mail.mt_note',
         )
@@ -733,7 +856,7 @@ class OutgoingDocument(models.Model):
             self.sudo().number_of_esp_signs = 0
 
         self.message_post(
-            body=_("Документ возвращён на доработку.<br/><b>Причина:</b> %s") % (reason or _("Не указана")),
+            body=Markup(_("Документ возвращён на доработку.<br/><b>Причина:</b> %s")) % (reason or _("Не указана")),
             message_type='notification',
             subtype_xmlid='mail.mt_note',
         )
@@ -745,8 +868,8 @@ class OutgoingDocument(models.Model):
                 self.sudo().activity_schedule(
                     activity_type_id=activity_type.id,
                     user_id=self.create_uid.id,
-                    summary=_("Документ возвращён на доработку"),
-                    note=reason or _("Требуется внести исправления и отправить повторно на согласование."),
+                    summary=Markup(_("Документ возвращён на доработку")),
+                    note=reason or Markup(_("Требуется внести исправления и отправить повторно на согласование.")),
                 )
 
     # ---------------------------------------------------------
@@ -764,7 +887,7 @@ class OutgoingDocument(models.Model):
         self.method_on_start()
 
         # Закрываем все открытые activity на этом документе
-        self.sudo().activity_ids.action_feedback(feedback=_("Документ отправлен на согласование"))
+        self.sudo().activity_ids.unlink() # self.sudo().activity_ids.action_feedback(feedback=_("Документ отправлен на согласование"))
 
         # Определяем нужен ли этап under_approval
         # Пропускаем если: начальник = Директор И нет дополнительных согласующих
@@ -1385,7 +1508,7 @@ class OutgoingDocument(models.Model):
         if not report:
             raise UserError(_("Отчёт '%s' не найден") % report_xmlid)
 
-        return report.sudo().report_action(self, data={})
+        return report.sudo().report_action(self, data={}, config=False)
 
     def download_report_docx(self):
         """Скачать DOCX отчёт по типу письма"""
@@ -1399,7 +1522,7 @@ class OutgoingDocument(models.Model):
         if not report:
             raise UserError(_("Отчёт '%s' не найден") % report_xmlid)
 
-        return report.sudo().report_action(self, data={})
+        return report.sudo().report_action(self, data={}, config=False)
 
     # ---------------------------------------------------------
     # Методы для портального подписания (medical_examination)

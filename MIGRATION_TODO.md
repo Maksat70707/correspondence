@@ -102,7 +102,22 @@ Odoo 16). Сток-`hr` в Odoo 19 этого поля не содержит.
 - Поля mixin (`state`, `state_id`, `state_agreement_line_ids`,
   `approval_user_ids`, `user_can_approve`, `need_esp`, `button_*_enabled`)
   — все присутствуют в новой версии фреймворка.
+  
+## Выполнено в Входящих (применить к Исходящим при тесте)
+- kanban-box → card template
+- invisible=1 → column_invisible=1 в <list>
+- @api.model_create_multi сигнатура create()
+- mail.activity.state НЕ search'ить (non-stored)
+- res.groups.users → user_ids
+- mail.channel → discuss.channel
+- Markup() обёртка для HTML в message_post
+- QWeb None-safety в mail.template
+- Вариант B: активити на родителе (corr.incoming) вместо assignment.line
+- Cancelled как терминальный статус для auto-transition
+- self.env.su bypass в write() permissions для cron/системных вызовов
 
+## К проверке для Исходящих
+[тут пройдёшь чеклист, отметишь что нашёл]
 ---
 
 ## Открытые задачи — некритичные deprecations
@@ -344,3 +359,6 @@ Anything more complex like `invisible="not delegated"`, `invisible="state == 'dr
    - List of fields where the change was made (file:line, field name)
 
 Do not commit. Leave changes in working tree for review.
+
+
+Видел ошибку где если у сотрудника нету начальника, то система сама перепригнет на статус Утверждение и поставить подписатка в список согласования, но не создать ему активность на подписание 

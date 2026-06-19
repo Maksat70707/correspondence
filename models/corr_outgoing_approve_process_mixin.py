@@ -213,7 +213,7 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
         # ==============================================================
         if status == 'processing':
             secretary_users = self.env['res.users'].sudo().search([
-                ('groups_id', 'in', self.env.ref(
+                ('group_ids', 'in', self.env.ref(
                     'correspondence.group_correspondence_secretary'
                 ).id),
                 ('id', '!=', 2),
