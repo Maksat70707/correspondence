@@ -911,8 +911,12 @@ class OutgoingDocument(models.Model):
         if skip_under_approval:
             # Сразу в approval — определяем куда в зависимости от типа
             if self._is_medical_examination_type():
-                return self.get_agreement_lines('approval_medical_examination')
-            return self.get_agreement_lines('approval')
+                result = self.get_agreement_lines('approval_medical_examination')
+            else:
+                result = self.get_agreement_lines('approval')
+            self._schedule_approval_activity()
+
+            return result
         else:
             # Обычный путь через under_approval
             return self.action_approve()
@@ -1203,7 +1207,7 @@ class OutgoingDocument(models.Model):
             'employee_job_id': self.employee_job_id.with_context(lang=language_context).name if employee else '',
             'employee_identification_id': (self.employee_identification_id or '') if employee else '',
             'employee_udo_number': self.employee_udo_number if employee else '',
-            'employee_udo_issuing_authority': self._selection_label('employee_udo_issuing_authority', language_context) if employee else '',
+            'employee_udo_issuing_authority': self.employee_udo_issuing_authority.with_context(lang=language_context).name if employee else '',
             # Шаблон использует employee_udo_issuing_date_start (не employee_udo_issuing_date)
             'employee_udo_issuing_date_start': (
                 self.employee_udo_issuing_date.strftime('%d.%m.%Y')
@@ -1227,7 +1231,7 @@ class OutgoingDocument(models.Model):
 
             # Медицинский работник (шаблон: {{medical_worker_id}}, {{medical_worker_job}})
             'medical_worker_id': self.medical_worker_id.name if self.medical_worker_id else '',
-            'medical_worker_job': self.medical_worker_job_id or '',
+            'medical_worker_job': self.medical_worker_job_id.with_context(lang=language_context).name if self.medical_worker_job_id else '',
             'med_signing_date': med_signing_date,
 
             # Дата ознакомления сотрудника (шаблон: {{date}})

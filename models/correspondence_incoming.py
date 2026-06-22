@@ -125,6 +125,8 @@ class IncomingDocument(models.Model):
     show_col_email = fields.Boolean(compute="_compute_recipient_columns")
     show_col_odoo_user = fields.Boolean(compute="_compute_recipient_columns")
     show_col_phone = fields.Boolean(compute="_compute_recipient_columns")
+    state_agreement_line_ids = fields.One2many(tracking=False)
+    state_agreement_history_line_ids = fields.One2many(tracking=False)
 
     @api.depends('correspondent_line_ids.shipment_method_ids')
     def _compute_recipient_columns(self):
