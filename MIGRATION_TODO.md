@@ -122,38 +122,6 @@ Odoo 16). Сток-`hr` в Odoo 19 этого поля не содержит.
 
 ## Открытые задачи — некритичные deprecations
 
-### 1. `@route(type='json')` → `@route(type='jsonrpc')`
-
-В Odoo 19 `type='json'` — deprecated алиас на `type='jsonrpc'`. Warning,
-не блокер.
-
-**Файл:** `controllers/portal.py:36` (и возможно ещё места в файле).
-
-**Правка:** в декораторах `@route` / `@http.route` заменить
-`type='json'` на `type='jsonrpc'`. Остальные параметры не трогать.
-
-### 2. `_(...)` в default-параметрах функций → `_lt(...)`
-
-Warning: `no translation language detected, skipping translation`.
-Возникает когда `_("...")` стоит как default-значение параметра — он
-вычисляется на этапе загрузки класса, language context ещё не активен.
-
-**Найденное место:** `models/correspondence_incoming.py:156`:
-```python
-def _require_any_group(self, xmlids, message=_("Недостаточно прав.")):
-```
-
-**Правка:**
-```python
-from odoo import _, _lt
-def _require_any_group(self, xmlids, message=_lt("Недостаточно прав.")):
-```
-
-Проверить все .py файлы модуля на этот паттерн (`=_(` и `= _(`
-в сигнатурах функций). Внутри тела функций `_(...)` оставлять как есть.
-
-Аккуратно: `_lt` возвращает lazy proxy. Если где-то идёт сравнение
-через `==` или конкатенация со строкой — обернуть в `str(...)`.
 
 ### 3. `_sql_constraints` → `models.Constraint`
 

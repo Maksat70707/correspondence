@@ -275,7 +275,7 @@
                 <field name="resolution_id" string="Резолюция"/>
                 <field name="report_needed" string="Требует отчёт"/>
                 <field name="report" string="Отчет исполнителя"/>
-                <field name="attachment_ids" widget="many2many_binary" string="Документы"/>
+                <field name="attachment_ids" widget="many2many_binary" string="Документы/Отчёты"/>
                 <field name="status" string="Статус" />
                 <field name="deadline" string="Срок"/>
                 <field name="completion_datetime" string="Дата завершения" readonly="1"/>
@@ -300,12 +300,10 @@
                         <group string="Основное">
                             <field name="user_id" string="Исполнитель"/>
                             <field name="resolution_id" string="Резолюция"/>
+                            <field name="task" string="Задача/комментарий"/>
                             <field name="deadline" string="Срок"/>
                             <field name="report_needed" string="Требует отчёт"/>
-                            <field name="status" string="Статус" widget="badge"
-                                   decoration-info="status == 'new'"
-                                   decoration-warning="status == 'in_progress'"
-                                   decoration-success="status == 'done'"/>
+                            <field name="status" string="Статус" />
                             <field name="completion_datetime" string="Дата завершения"
                                    readonly="1"
                                    invisible="status != 'done'"/>
@@ -316,7 +314,7 @@
                                    invisible="status == 'done'"/>
                             <field name="executor_history_ids" string="История исполнителей"
                                    widget="many2many_tags" readonly="1"/>
-                            <field name="incoming_id" string="Документ" readonly="1"/>
+                            <field name="incoming_id" string="Входящая корреспонденция" readonly="1"/>
                         </group>
                     </group>
 
@@ -326,7 +324,7 @@
                             <field name="report"
                                    readonly="status == 'done'"/>
                             <field name="attachment_ids" widget="many2many_binary"
-                                   string="Документы"/>
+                                   string="Документы/Отчёты" readonly="status == 'done'"/>
                         </page>
                     </notebook>
                 </sheet>

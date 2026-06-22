@@ -53,7 +53,6 @@
     ],
     'assets': {
         'web.assets_frontend': [
-            # NCALayer client — берём из appstream_approval, он там в lib/
             'appstream_approval/static/src/lib/ncalayer/ncalayer_client.js',
             'correspondence/static/src/js/portal_sign.js',
         ],

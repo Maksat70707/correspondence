@@ -12,7 +12,6 @@ class OutgoingDocument(models.Model):
         "mail.activity.mixin",
         "appstream.approval.mixin",
         "corr.outgoing.approve.process.mixin",
-        "portal.signing.mixin",  # Миксин для портального подписания
     ]
     _order = "id desc"
 
@@ -808,6 +807,11 @@ class OutgoingDocument(models.Model):
 
         return self.env.ref(report_xmlid, raise_if_not_found=False)
     
+    def _selection_label(self, fname, lang):
+        """Возвращает переведённый лейбл значения Selection-поля."""
+        field = self.with_context(lang=lang)._fields[fname]
+        selection = dict(field._description_selection(self.env))
+        return selection.get(self[fname], '')
 
     def _on_reject(self, old_state=None, reason=None):
         """При отклонении документа согласующими"""
@@ -1197,9 +1201,9 @@ class OutgoingDocument(models.Model):
             # Данные сотрудника (шаблон: {{employee_id}}, {{employee_job_id}} и т.д.)
             'employee_id': employee.name if employee else '',
             'employee_job_id': self.employee_job_id.with_context(lang=language_context).name if employee else '',
-            'employee_identification_id': self.employee_identification_id.with_context(lang=language_context).name if employee else '',
+            'employee_identification_id': (self.employee_identification_id or '') if employee else '',
             'employee_udo_number': self.employee_udo_number if employee else '',
-            'employee_udo_issuing_authority': self.employee_udo_issuing_authority.with_context(lang=language_context).name if employee else '',
+            'employee_udo_issuing_authority': self._selection_label('employee_udo_issuing_authority', language_context) if employee else '',
             # Шаблон использует employee_udo_issuing_date_start (не employee_udo_issuing_date)
             'employee_udo_issuing_date_start': (
                 self.employee_udo_issuing_date.strftime('%d.%m.%Y')
@@ -1223,7 +1227,7 @@ class OutgoingDocument(models.Model):
 
             # Медицинский работник (шаблон: {{medical_worker_id}}, {{medical_worker_job}})
             'medical_worker_id': self.medical_worker_id.name if self.medical_worker_id else '',
-            'medical_worker_job': self.medical_worker_job_id.with_context(lang=language_context).name if self.medical_worker_job_id else '',
+            'medical_worker_job': self.medical_worker_job_id or '',
             'med_signing_date': med_signing_date,
 
             # Дата ознакомления сотрудника (шаблон: {{date}})
@@ -1525,41 +1529,8 @@ class OutgoingDocument(models.Model):
         return report.sudo().report_action(self, data={}, config=False)
 
     # ---------------------------------------------------------
-    # Методы для портального подписания (medical_examination)
+    # Проверки типа документа
     # ---------------------------------------------------------
-
-    def _get_portal_signers(self):
-        """
-        Возвращает партнёров для портального подписания.
-        Для типа medical_examination - это medical_worker_id.
-        """
-        self.ensure_one()
-
-        # Проверяем тип документа
-        medical_examination_type = self.env.ref(
-            'correspondence.medical_examination',
-            raise_if_not_found=False
-        )
-
-        if self.type_id == medical_examination_type and self.medical_worker_id:
-            return self.medical_worker_id
-
-        return self.env['res.partner']
-
-    def _portal_signing_complete(self):
-        """
-        Fallback: вызывается из portal_signing_mixin если _process_post_approval
-        не доступен. В штатном потоке НЕ вызывается — вся логика перехода
-        обрабатывается через _process_post_approval.
-        """
-        self.ensure_one()
-        next_state = self._get_next_state_after(self.state)
-        if not next_state:
-            next_state = 'processing'
-
-        if hasattr(self, "method_in_middle"):
-            self.method_in_middle()
-        self.sudo().get_agreement_lines(next_state)
 
     def _is_medical_examination_type(self):
         """
