@@ -319,8 +319,6 @@
                 <separator/>
                 <filter string="Мои документы" name="my_documents" 
                         domain="[('create_uid', '=', uid)]"/>
-                <filter string="На моём согласовании" name="my_approval"
-                        domain="[('approval_user_ids', 'in', uid)]"/>
                 <separator/>
                 <filter string="Черновик" name="state_draft" domain="[('state', '=', 'draft')]"/>
                 <filter string="Доработка" name="state_revision" domain="[('state', '=', 'revision')]"/>
