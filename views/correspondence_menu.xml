@@ -72,21 +72,21 @@
     <!-- Меню Поручения                               -->
     <!-- ============================================== -->
 
-    <!-- Меню Поручения для Employee -->
+    <!-- Меню Поручения для Employee и Secretary -->
     <menuitem id="menu_corr_tasks_employee"
               name="Поручения"
               parent="menu_correspondence_root"
               action="action_assignment_tasks_employee"
               sequence="25"
-              groups="correspondence.group_correspondence_employee"/>
+              groups="correspondence.group_correspondence_employee,correspondence.group_correspondence_secretary"/>
 
-    <!-- Меню Поручения для остальных -->
+    <!-- Меню Поручения для Director и Admin (видят все) -->
     <menuitem id="menu_corr_tasks_all"
               name="Поручения"
               parent="menu_correspondence_root"
               action="action_assignment_tasks_all"
               sequence="25"
-              groups="correspondence.group_correspondence_secretary,correspondence.group_correspondence_director,correspondence.group_correspondence_admin"/>
+              groups="correspondence.group_correspondence_director,correspondence.group_correspondence_admin"/>
 
     <!-- ============================================== -->
     <!-- Меню Отчеты                                -->
