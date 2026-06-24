@@ -20,6 +20,7 @@ class CorrespondenceAssignmentLine(models.Model):
         string="Назначено исполнителю",
         required=True,
         tracking=True,
+        domain="[('share', '=', False)]",
     )
 
     # Поля для делегирования
@@ -40,6 +41,7 @@ class CorrespondenceAssignmentLine(models.Model):
     reassign_user_id = fields.Many2one(
         "res.users",
         string="Переназначить",
+        domain="[('share', '=', False)]",
         help="Выберите пользователя для переназначения задачи. "
              "После сохранения текущий исполнитель будет заменён.",
     )

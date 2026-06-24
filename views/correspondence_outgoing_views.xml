@@ -505,7 +505,7 @@
     <record id="action_corr_outgoing_employee" model="ir.actions.act_window">
         <field name="name">Исходящая корреспонденция</field>
         <field name="res_model">corr.outgoing</field>
-        <field name="view_mode">kanban,list,form</field>
+        <field name="view_mode">list,kanban,form</field>
         <field name="domain">['|', '|', '|', ('create_uid', '=', uid), ('additional_approver_ids', 'in', uid), ('state_agreement_history_line_ids.user_id', '=', uid), ('state_agreement_line_ids.user_id', '=', uid)]</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
@@ -518,7 +518,7 @@
     <record id="action_corr_outgoing" model="ir.actions.act_window">
         <field name="name">Исходящая корреспонденция</field>
         <field name="res_model">corr.outgoing</field>
-        <field name="view_mode">kanban,list,form</field>
+        <field name="view_mode">list,kanban,form</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 Создайте первый исходящий документ
