@@ -404,7 +404,10 @@ class OutgoingDocument(models.Model):
         string="Вахтовик",
         compute="_compute_is_vahta",
     )
-
+    has_report = fields.Boolean(
+        compute='_compute_has_report',
+        string="Доступен ли отчёт-шаблон для текущего типа",
+    )
     show_simple = fields.Boolean(
         compute="_compute_show_simple",
     )
@@ -504,6 +507,10 @@ class OutgoingDocument(models.Model):
         """Проверяет, является ли сотрудник вахтовиком"""
         for rec in self:
             rec.is_vahta = rec.current_salary < 25000
+    @api.depends('type_id', 'language')
+    def _compute_has_report(self):
+        for rec in self:
+            rec.has_report = bool(rec._get_report_by_type('pdf'))            
     @api.depends('show_simple', 'show_guarantee', 'show_change_conditions')
     def _compute_show_main_attachment(self):
         """Проверяет, нужно ли показывать поле с основным вложением для подписания"""
@@ -556,12 +563,14 @@ class OutgoingDocument(models.Model):
         for rec in self:
             rec.is_initiator = rec.create_uid == self.env.user
 
+    @api.depends_context("uid")
     @api.depends("state", "is_initiator")
     def _compute_can_cancel(self):
         """Проверяет, может ли инициатор отменить документ"""
         for rec in self:
             rec.can_cancel = rec.is_initiator and rec.state in ('draft', 'under_approval', 'approval', 'approval_medical_examination')
 
+    @api.depends_context("uid")
     @api.depends("state", "employee_id", "state_agreement_line_ids")
     def _compute_is_employee_signer(self):
         """
@@ -705,6 +714,10 @@ class OutgoingDocument(models.Model):
 
     def method_on_start(self):
         """Валидация перед запуском согласования (из draft)"""
+        allowed_mimetypes = [
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',  # DOCX
+            'application/pdf',  # PDF
+        ]
         for rec in self:
             if not rec.subject:
                 raise ValidationError(_("Укажите тему документа"))
@@ -714,6 +727,12 @@ class OutgoingDocument(models.Model):
             simple_type = self.env.ref('correspondence.simple', raise_if_not_found=False)
             if rec.type_id == simple_type and not rec.attachment_to_sign_ids:
                 raise ValidationError(_("Прикрепите исходящее письмо для подписания"))
+
+            for attachment in rec.attachment_to_sign_ids:
+                if attachment.mimetype not in allowed_mimetypes:
+                    raise ValidationError(
+                        _("Формат вложения для подписания может быть только .pdf или .docx!")
+                    )
 
     def method_in_middle(self):
         """Валидация перед переходом между промежуточными статусами"""
@@ -994,10 +1013,6 @@ class OutgoingDocument(models.Model):
 
         return values
 
-    def prepare_report_values(self):
-        """Подготавливает данные для DOCX отчёта"""
-        self.ensure_one()
-        return self.get_report_values()
 
     def prepare_medical_checkup_report_values(self):
         """Подготавливает данные для DOCX отчёта Направление на медицинское осмотр"""
@@ -1207,7 +1222,7 @@ class OutgoingDocument(models.Model):
             'employee_job_id': self.employee_job_id.with_context(lang=language_context).name if employee else '',
             'employee_identification_id': (self.employee_identification_id or '') if employee else '',
             'employee_udo_number': self.employee_udo_number if employee else '',
-            'employee_udo_issuing_authority': self.employee_udo_issuing_authority.with_context(lang=language_context).name if employee else '',
+            'employee_udo_issuing_authority': self._selection_label('employee_udo_issuing_authority', language_context) if employee else '',
             # Шаблон использует employee_udo_issuing_date_start (не employee_udo_issuing_date)
             'employee_udo_issuing_date_start': (
                 self.employee_udo_issuing_date.strftime('%d.%m.%Y')
@@ -1231,7 +1246,7 @@ class OutgoingDocument(models.Model):
 
             # Медицинский работник (шаблон: {{medical_worker_id}}, {{medical_worker_job}})
             'medical_worker_id': self.medical_worker_id.name if self.medical_worker_id else '',
-            'medical_worker_job': self.medical_worker_job_id.with_context(lang=language_context).name if self.medical_worker_job_id else '',
+            'medical_worker_job': self.medical_worker_job_id or '',
             'med_signing_date': med_signing_date,
 
             # Дата ознакомления сотрудника (шаблон: {{date}})
@@ -1302,11 +1317,8 @@ class OutgoingDocument(models.Model):
         if self.job_offer_position_id:
             position_name = self.job_offer_position_id.with_context(lang='ru_RU').name or ''
 
-        # Тип занятости — отображаемое значение
-        time_type_label = ''
-        if self.time_type:
-            time_type_dict = dict(self._fields['time_type'].selection)
-            time_type_label = time_type_dict.get(self.time_type, '')
+        # Тип занятости — отображаемое значение (используем общий хелпер)
+        time_type_label = self._selection_label('time_type', 'ru_RU') if self.time_type else ''
 
         values.update({
             # Кандидат
@@ -1473,11 +1485,6 @@ class OutgoingDocument(models.Model):
                 'pdf': 'correspondence.correspondence_reference_letter_eng_pdf',
                 'docx': 'correspondence.correspondence_reference_letter_eng_docx',
             },
-            # Для остальных типов - стандартный шаблон
-            'default': {
-                'pdf': 'correspondence.correspondence_outgoing_template_pdf',
-                'docx': 'correspondence.correspondence_outgoing_template_docx',
-            },
         }
 
         # Получаем xmlid типа письма
@@ -1502,7 +1509,7 @@ class OutgoingDocument(models.Model):
             return type_to_report[type_xmlid].get(output_format)
 
         # Возвращаем дефолтный отчёт
-        return type_to_report['default'].get(output_format)
+        return None
 
     def download_report_pdf(self):
         """Скачать PDF отчёт по типу письма"""

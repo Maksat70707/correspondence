@@ -137,7 +137,9 @@ class CorrIncomingApproveProcessMixin(models.AbstractModel):
         # Находим текущего согласующего
         current_coordinator = self.get_current_coordinator()
         
-        # Дополнительные проверки (для переопределения)
+        # Extension hook: подкласс (например, correspondence_extra) может
+        # определить additional_condition() для дополнительной валидации
+        # на этом этапе. В базовом модуле метод не определён.
         if hasattr(self, "additional_condition"):
             self.additional_condition()
         
@@ -276,10 +278,6 @@ class CorrIncomingApproveProcessMixin(models.AbstractModel):
                 _logger.warning("Mail template 'correspondence.corr_incoming_mail_template' not found")
                 return
 
-            # Устанавливаем модель для шаблона
-            template.model_id = (
-                self.env["ir.model"].sudo().search([("model", "=", self._name)]).id
-            )
 
             # Определяем получателя
             if notif_type in ("agreement", "execution"):

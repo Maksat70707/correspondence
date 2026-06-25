@@ -56,7 +56,7 @@
                 <t t-if="obj">
                     <p style="margin-top: 20px;">
                         <strong>Перейти к документу:</strong><br/>
-                        <a t-attf-href="{{ base_url }}/web#id={{ obj.id }}&amp;view_type=form&amp;model={{ obj._name }}" style="color: #007bff; text-decoration: none;">
+                        <a t-attf-href="{{ obj.get_base_url() }}/odoo/{{ obj._name }}/{{ obj.id }}" style="color: #007bff; text-decoration: none;">
                             <t t-out="obj.display_name"/>
                         </a>
                     </p>
@@ -154,7 +154,7 @@
                 <t t-if="obj">
                     <p style="margin-top: 20px;">
                         <strong>Перейти к документу:</strong><br/>
-                        <a t-attf-href="{{ base_url }}/web#id={{ obj.id }}&amp;view_type=form&amp;model={{ obj._name }}" style="color: #007bff; text-decoration: none;">
+                        <a t-attf-href="{{ obj.get_base_url() }}/odoo/{{ obj._name }}/{{ obj.id }}" style="color: #007bff; text-decoration: none;">
                             <t t-out="obj.display_name"/>
                         </a>
                     </p>

@@ -40,8 +40,7 @@ class IncomingDocument(models.Model):
         column2="shipment_method_id",
         string="Метод получения",
         required=True,
-        default=lambda self: self.env["correspondence.shipment.method"].search([("name", "=", "Корпоративная электронная почта")], limit=1).ids
-    )
+        default=lambda self: (self.env.ref("correspondence.corp_email", raise_if_not_found=False) or self.env["correspondence.shipment.method"]).ids,
     doc_arrival_date = fields.Date(
         string="Дата входящего документа")
 
@@ -89,12 +88,6 @@ class IncomingDocument(models.Model):
         string="Задания",
     )
 
-    all_assignments_done = fields.Boolean(
-        string="Все задания выполнены",
-        compute="_compute_all_assignments_done",
-        store=False,
-    )
-
     assignment_count = fields.Integer(
         string="Количество заданий",
         compute="_compute_assignment_count",
@@ -105,17 +98,6 @@ class IncomingDocument(models.Model):
         for rec in self:
             rec.assignment_count = len(rec.assignment_line_ids)
 
-    @api.depends("assignment_line_ids.status")
-    def _compute_all_assignments_done(self):
-        # Терминальные статусы поручения: выполнено или отменено.
-        # Документ должен автозакрываться, когда все строки в одном из них.
-        TERMINAL_STATUSES = ("done", "cancelled")
-        for rec in self:
-            if not rec.assignment_line_ids:
-                rec.all_assignments_done = False
-            else:
-                rec.all_assignments_done = all(
-                    l.status in TERMINAL_STATUSES for l in rec.assignment_line_ids)
                 
                 
     # Computed поля для видимости колонок в таблице получателей

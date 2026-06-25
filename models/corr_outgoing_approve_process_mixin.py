@@ -408,6 +408,9 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
         напрямую (approver уже помечен как agreed в portal_sign_esp).
         """
         current_coordinator = self.get_current_coordinator()
+        # Extension hook: подкласс (например, correspondence_extra) может
+        # определить additional_condition() для дополнительной валидации
+        # на этом этапе. В базовом модуле метод не определён.
         if hasattr(self, "additional_condition"):
             self.additional_condition()
         if current_coordinator:
@@ -435,12 +438,11 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
             )
         else:
             raise ValidationError(_("Вы не являетесь текущим согласующим"))
-
-    def _process_post_approval(self, coordinator, next_state=None, cur_state=None, from_portal=False):
+        
+    def _process_post_approval(self, coordinator, next_state=None, cur_state=None):
         """
-        Единая логика после согласования — используется из:
-        - after_script (системное подписание кнопками/ЭЦП)  → from_portal=False
-        - portal_sign_esp (портальное подписание ЭЦП)       → from_portal=True
+        Единая логика после согласования — вызывается из after_script
+        (системное И портальное подписание ЭЦП через /sign_esp).
 
         Алгоритм:
         1. Удаляет параллельных (не all_approve) при той же sequence
@@ -448,10 +450,8 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
         3. Активирует следующих по sequence (waiting → in_progress)
         4. Если все согласовали — переходим на next_state через get_agreement_lines
 
-        ВАЖНО: _schedule_approval_activity вызывается ТОЛЬКО при from_portal=True.
-        При системном пути (from_portal=False) activity планируется фреймворком
-        appstream_approval в _action_approve после выполнения after_script,
-        чтобы избежать дублирования активностей.
+        Активити для следующих подписантов планируется фреймворком
+        appstream_approval в _action_approve после выполнения after_script.
         """
         if cur_state is None:
             cur_state = self.state
@@ -493,14 +493,6 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
             for nc in next_coordinators:
                 nc.sudo().status = "in_progress"
                 self.action_notify("agreement", nc.user_id)
-
-            # Планируем activity ТОЛЬКО при портальном подписании.
-            # При системном пути activity планируется фреймворком
-            # (_action_approve → schedule_activity после after_script).
-            if from_portal:
-                self._schedule_approval_activity(
-                    users=next_coordinators.mapped('user_id')
-                )
 
             self.sudo().write({"state": cur_state})
         else:
@@ -624,8 +616,7 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
             'res_id': self.id,
         })
 
-        setattr(self.sudo(), field_name, [(3, attachment.id)])
-        setattr(self.sudo(), field_name, [(4, new_attachment.id)])
+        setattr(self.sudo(), field_name, [Command.unlink(attachment.id), Command.link(new_attachment.id)])
 
     def _add_sidebar_signature_docx(self, document, line, include_doc_number=True):
         """
@@ -1005,18 +996,12 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
         for record in self:
             user, template = record.create_uid, False
             template = self.env.ref(
-                "correspondence.state_mixin_mail_template",
+                "correspondence.corr_outgoing_mail_template",
                 raise_if_not_found=False
             )
             if not template:
                 return
             template = template.sudo()
-            template.model_id = (
-                self.env["ir.model"]
-                .sudo()
-                .search([("model", "=", self._name)])
-                .id
-            )
 
             if notif_type == "agreement":
                 user = approver_id

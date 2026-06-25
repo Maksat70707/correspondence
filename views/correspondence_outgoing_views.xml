@@ -163,13 +163,13 @@
                             type="object"
                             class="btn-secondary"
                             icon="fa-file-pdf-o"
-                            invisible="state not in ['processing', 'done', 'review']"/>
+                            invisible="state not in ['processing', 'done', 'review'] or not has_report"/>
                     <button name="download_report_docx"
                             string="Скачать DOCX"
                             type="object"
                             class="btn-secondary"
                             icon="fa-file-word-o"
-                            invisible="state not in ['processing', 'done', 'review']"/>
+                            invisible="state not in ['processing', 'done', 'review'] or not has_report"/>
 
                     <!-- ========================================= -->
                     <!-- Statusbar                                 -->

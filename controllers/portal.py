@@ -119,12 +119,49 @@ class CorrespondencePortalController(http.Controller):
             'page_name': 'correspondence_signed',
         })
 
-    @http.route('/correspondence/download/file/<model("ir.attachment"):record>',
-                type='http', auth='public')
-    def download_attachment(self, record):
-        """Скачивание вложения"""
-        file_content = base64.b64decode(record.sudo().datas)
-        filename = record.sudo().name
+    @http.route('/correspondence/download/file/<int:attachment_id>',
+                type='http', auth='user')
+    def download_attachment(self, attachment_id):
+        """
+        Скачивание вложения портальным пользователем.
+
+        Безопасность: проверяем что
+        1. Вложение существует
+        2. Привязано к документу corr.outgoing
+        3. Документ принадлежит текущему партнёру (он медработник по нему)
+        4. Вложение действительно лежит на одном из полей подписания этого документа
+
+        Без этих проверок auth='public' + record.sudo().datas давал
+        классический IDOR — любой неаутентифицированный пользователь, перебирая
+        id, мог скачать любое ir.attachment в системе.
+        """
+        att = request.env['ir.attachment'].sudo().browse(attachment_id)
+        if not att.exists():
+            raise NotFound()
+
+        # Вложение должно быть от исходящего документа корреспонденции
+        if att.res_model != 'corr.outgoing':
+            raise NotFound()
+
+        document = request.env['corr.outgoing'].sudo().browse(att.res_id)
+        if not document.exists():
+            raise NotFound()
+
+        # Текущий пользователь должен быть медработником этого документа
+        if document.medical_worker_id != request.env.user.partner_id:
+            raise NotFound()
+
+        # И вложение должно быть в одном из полей подписания этого документа
+        # (а не любое привязанное к этому corr.outgoing — там может быть что-то ещё)
+        allowed_ids = (
+            document.attachment_to_sign_ids.ids
+            + document.attachment_additional_sign_ids.ids
+        )
+        if att.id not in allowed_ids:
+            raise NotFound()
+
+        file_content = base64.b64decode(att.datas)
+        filename = att.name
 
         headers = [
             ('Content-Type', 'application/octet-stream'),

@@ -1,4 +1,4 @@
-from odoo import api, fields, models, _
+from odoo import api, fields, models, Command, _
 from odoo.exceptions import AccessError, ValidationError
 from datetime import timedelta
 from markupsafe import Markup
@@ -278,8 +278,8 @@ class CorrespondenceAssignmentLine(models.Model):
                         'name': f'OdooBot, {assigner.name}',
                         'channel_type': 'chat',
                         'channel_member_ids': [
-                            (0, 0, {'partner_id': odoobot.id}),
-                            (0, 0, {'partner_id': assigner.partner_id.id}),
+                            Command.create({'partner_id': odoobot.id}),
+                            Command.create({'partner_id': assigner.partner_id.id}),
                         ],
                     })
 
@@ -521,7 +521,7 @@ class CorrespondenceAssignmentLine(models.Model):
             new_user_id = vals.pop('reassign_user_id')
             # Добавляем текущего исполнителя в историю
             if rec.user_id:
-                vals['executor_history_ids'] = [(4, rec.user_id.id)]
+                vals['executor_history_ids'] = [Command.link(rec.user_id.id)]
             # Заменяем исполнителя
             vals['user_id'] = new_user_id
             # Очищаем поле переназначения (через SQL после write, чтобы избежать рекурсии)

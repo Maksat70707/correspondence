@@ -27,6 +27,7 @@ class CorrespondenceReworkWizard(models.TransientModel):
         if not (
             user.has_group('correspondence.group_correspondence_director')
             or user.has_group('correspondence.group_correspondence_admin')
+            or user.has_group('correspondence.group_correspondence_secretary')
         ):
             raise AccessError(_('Недостаточно прав.'))
 

@@ -182,7 +182,6 @@
                             <field name="create_uid" string="Инициатор" readonly="1"/>
                             <field name="create_date" string="Дата создания" readonly="1"/>
                             <field name="assignment_count" string="Заданий"/>
-                            <field name="all_assignments_done" invisible="1"/>
                         </group>
                     </group>
 
