@@ -294,14 +294,17 @@ class CorrIncomingApproveProcessMixin(models.AbstractModel):
                 record._create_activity_for_user(user, notif_type, reason)
 
             # Отправляем email/сообщение
-            if user.notification_type == "email":
-                template.with_context(
-                    object=record, notif_type=notif_type, reason=reason, user=user
-                ).send_mail(record.id, force_send=True, email_values={'model': None, 'res_id': None})
-            else:
-                record.with_context(
-                    object=record, notif_type=notif_type, reason=reason, user=user
-                ).message_post_with_template(template.id)
+            template.with_context(
+                object=record, notif_type=notif_type, reason=reason, user=user
+            ).send_mail(
+                record.id,
+                force_send=True,
+                email_values={
+                    'model': None,
+                    'res_id': None,
+                    'email_to': user.email or user.partner_id.email or '',
+                },
+            )
 
     def _create_activity_for_user(self, user, notif_type, reason=None):
         """Создаёт activity (действие) для пользователя"""

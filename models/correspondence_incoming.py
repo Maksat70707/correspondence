@@ -41,6 +41,7 @@ class IncomingDocument(models.Model):
         string="Метод получения",
         required=True,
         default=lambda self: (self.env.ref("correspondence.corp_email", raise_if_not_found=False) or self.env["correspondence.shipment.method"]).ids,
+    )
     doc_arrival_date = fields.Date(
         string="Дата входящего документа")
 

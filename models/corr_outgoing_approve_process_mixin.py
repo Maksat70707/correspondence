@@ -1010,20 +1010,20 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
 
             if user:
                 try:
-                    if user.notification_type == "email":
-                        template.with_context(
-                            object=record,
-                            notif_type=notif_type,
-                            reason=reason,
-                            user=user,
-                        ).send_mail(record.id, force_send=True)
-                    else:
-                        record.with_context(
-                            object=record,
-                            notif_type=notif_type,
-                            reason=reason,
-                            user=user,
-                        ).message_post_with_template(template.id)
+                    template.with_context(
+                        object=record,
+                        notif_type=notif_type,
+                        reason=reason,
+                        user=user,
+                    ).send_mail(
+                        record.id,
+                        force_send=True,
+                        email_values={
+                            'model': None,
+                            'res_id': None,
+                            'email_to': user.email or user.partner_id.email or '',
+                        },
+                    )
                 except Exception as e:
                     _logger.warning(
                         "Ошибка отправки уведомления пользователю %s: %s",
