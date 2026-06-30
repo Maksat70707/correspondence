@@ -23,7 +23,7 @@ class OutgoingDocument(models.Model):
         string="Номер исходящего документа",
         copy=False,
         readonly=True,
-        default=lambda self: _("(Новый)"),
+        default="---",
         tracking=True,
     )
 
@@ -74,6 +74,19 @@ class OutgoingDocument(models.Model):
     incoming_id = fields.Many2one(
         "corr.incoming",
         string="Входящее письмо",
+    )
+    parent_outgoing_id = fields.Many2one(
+        "corr.outgoing",
+        string="Предыдущее исходящее",
+        index=True,
+    )
+    follow_up_outgoing_ids = fields.One2many(
+        "corr.outgoing",
+        "parent_outgoing_id",
+        string="Последующие исходящие",
+    )
+    follow_up_outgoing_count = fields.Integer(
+        compute="_compute_follow_up_outgoing_count",
     )
 
     # Вручную добавленные согласующие (для этапа Согласование)
@@ -444,6 +457,10 @@ class OutgoingDocument(models.Model):
     show_employee_fields = fields.Boolean(
         compute="_compute_show_employee_fields",
     )
+    @api.depends("follow_up_outgoing_ids")
+    def _compute_follow_up_outgoing_count(self):
+        for rec in self:
+            rec.follow_up_outgoing_count = len(rec.follow_up_outgoing_ids)
     @api.depends('type_id')
     def _compute_show_simple(self):
         """Проверяет, нужно ли показывать доп поля письма"""
@@ -609,48 +626,6 @@ class OutgoingDocument(models.Model):
         for rec in self:
             rec.available_medical_worker_ids = partners
             
-    def action_refuse_medical_examination(self):
-        """
-        Отказ сотрудника от прохождения мед. освидетельствования.
-        1. Ставит medical_assessment_refusal = True
-        2. Помечает agreement line как agreed с комментарием
-        3. Проходит на следующий статус (как обычное согласие без ЭЦП)
-        """
-        self.ensure_one()
-
-        # Находим agreement line сотрудника
-        approver = self.state_agreement_line_ids.filtered(
-            lambda l: l.user_id == self.env.user and l.status == 'in_progress'
-        )
-        if not approver:
-            raise ValidationError(_("Вы не являетесь текущим подписантом"))
-
-        # Ставим флаг отказа
-        self.sudo().medical_assessment_refusal = True
-
-        # Помечаем как agreed (без ЭЦП)
-        approver.sudo().write({
-            'status': 'agreed',
-            'agreement_date': datetime.now(),
-            'commentary': 'Отказ от прохождения мед. освидетельствования',
-        })
-
-        # Записываем в историю
-        state_description = {
-            sd[0]: sd[1]
-            for sd in self._fields['state']._description_selection(self.env)
-        }
-        self.add_to_history(
-            approver,
-            state_description.get(self.state),
-            status="Отказ от мед. освидетельствования"
-        )
-
-        # Удаляем activity текущего пользователя
-        self._remove_approval_activity(user_id=self.env.uid)
-
-        # Переход через единую логику
-        self._process_post_approval(approver)
 
 
     @api.constrains('attachment_to_sign_ids')
@@ -669,19 +644,21 @@ class OutgoingDocument(models.Model):
         records = super().create(vals_list)
 
         for record in records:
-            # Генерируем номер
-            if not record.name or record.name in (_("(Новый)"), _("Новый")):
-                record.name = (
-                    self.env["ir.sequence"].sudo().next_by_code("correspondence.outgoing")
-                    or _("Новый")
-                )
-            # Привязываем вложения
             record._fix_attachment_ownership()
 
         return records
 
     def write(self, vals):
         res = super().write(vals)
+
+        if vals.get('state') == 'processing':
+            for rec in self:
+                if not rec.name or rec.name == "---":
+                    rec.name = (
+                        self.env["ir.sequence"].sudo().next_by_code("correspondence.outgoing")
+                        or "---"
+                    )
+
         if 'attachment_to_sign_ids' in vals or 'attachment_additional_sign_ids' in vals or 'attachment_extra_ids' in vals:
             self._fix_attachment_ownership()
         return res
@@ -702,11 +679,13 @@ class OutgoingDocument(models.Model):
 
     def _compute_display_name(self):
         for record in self:
-            if record.subject:
-                name = f"{record.name} - {record.subject}"
+            is_placeholder = record.name == "---"
+            if record.subject and not is_placeholder:
+                record.display_name = f"{record.name} - {record.subject}"
+            elif record.subject:
+                record.display_name = record.subject  # без префикса-плейсхолдера
             else:
-                name = f"{record.name}"
-            record.display_name = name
+                record.display_name = record.name or ""
 
     # ---------------------------------------------------------
     # Хуки для appstream_approval
@@ -898,6 +877,48 @@ class OutgoingDocument(models.Model):
     # ---------------------------------------------------------
     # Действия (кнопки)
     # ---------------------------------------------------------
+    def action_view_follow_up_outgoing(self):
+        """
+        Открывает список follow-up исходящих этого письма.
+        В context передаём:
+          - default_parent_outgoing_id = self.id (связать новый follow-up с этим)
+          - default_incoming_id = self.incoming_id.id (наследовать источник)
+        """
+        self.ensure_one()
+        action = {
+            "type": "ir.actions.act_window",
+            "name": _("Последующие исходящие"),
+            "res_model": "corr.outgoing",
+            "domain": [("parent_outgoing_id", "=", self.id)],
+            "context": {
+                "default_parent_outgoing_id": self.id,
+                "default_incoming_id": self.incoming_id.id,
+            },
+        }
+        if self.follow_up_outgoing_count == 1:
+            action["view_mode"] = "form"
+            action["res_id"] = self.follow_up_outgoing_ids.id
+        else:
+            action["view_mode"] = "list,form"
+        return action
+    
+    def action_create_follow_up_outgoing(self):
+        """
+        Открывает новую форму исходящего как follow-up к текущему.
+        Заполняет parent_outgoing_id (текущее) и наследует incoming_id.
+        """
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Новое исходящее (follow-up)"),
+            "res_model": "corr.outgoing",
+            "view_mode": "form",
+            "target": "current",
+            "context": {
+                "default_parent_outgoing_id": self.id,
+                "default_incoming_id": self.incoming_id.id,
+            },
+        }
 
     def action_send_to_approval(self):
         """Отправить на согласование (из draft)"""
@@ -973,6 +994,50 @@ class OutgoingDocument(models.Model):
 
         # Стандартное согласование (переход в done)
         return self.action_approve()
+    
+    def action_refuse_medical_examination(self):
+        """
+        Отказ сотрудника от прохождения мед. освидетельствования.
+        1. Ставит medical_assessment_refusal = True
+        2. Помечает agreement line как agreed с комментарием
+        3. Проходит на следующий статус (как обычное согласие без ЭЦП)
+        """
+        self.ensure_one()
+
+        # Находим agreement line сотрудника
+        approver = self.state_agreement_line_ids.filtered(
+            lambda l: l.user_id == self.env.user and l.status == 'in_progress'
+        )
+        if not approver:
+            raise ValidationError(_("Вы не являетесь текущим подписантом"))
+
+        # Ставим флаг отказа
+        self.sudo().medical_assessment_refusal = True
+
+        # Помечаем как agreed (без ЭЦП)
+        approver.sudo().write({
+            'status': 'agreed',
+            'agreement_date': datetime.now(),
+            'commentary': 'Отказ от прохождения мед. освидетельствования',
+        })
+
+        # Записываем в историю
+        state_description = {
+            sd[0]: sd[1]
+            for sd in self._fields['state']._description_selection(self.env)
+        }
+        self.add_to_history(
+            approver,
+            state_description.get(self.state),
+            status="Отказ от мед. освидетельствования"
+        )
+
+        # Удаляем activity текущего пользователя
+        self._remove_approval_activity(user_id=self.env.uid)
+
+        # Переход через единую логику
+        self._process_post_approval(approver)
+
 
     def get_report_values(self) -> dict:
         # Берём из истории тех кто подписал с ЭЦП

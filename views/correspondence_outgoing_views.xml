@@ -70,6 +70,12 @@
             <form string="Исходящая корреспонденция">
 
                 <header>
+                    <button name="action_create_follow_up_outgoing"
+                            string="Создать follow-up"
+                            type="object"
+                            class="btn-secondary"
+                            icon="fa-reply"
+                            invisible="state == 'draft'"/>
                     <!-- ========================================= -->
                     <!-- Кнопка: На согласование (draft)           -->
                     <!-- ========================================= -->
@@ -179,6 +185,17 @@
                 </header>
 
                 <sheet>
+                    <!-- Smart buttons -->
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_follow_up_outgoing"
+                                type="object"
+                                class="oe_stat_button"
+                                icon="fa-envelope">
+                            <field name="follow_up_outgoing_count"
+                                   widget="statinfo"
+                                   string="Последующие"/>
+                        </button>
+                    </div>
                     <!-- ========================================= -->
                     <!-- Информационные баннеры                    -->
                     <!-- ========================================= -->
@@ -252,7 +269,8 @@
                             <field name="type_id" readonly="state != 'draft'"/>
                             <field name="subject" readonly="state != 'draft'"/>
                             <field name="language" readonly="state != 'draft'"/>
-                            <field name="incoming_id" readonly="state != 'draft'"/>
+                            <field name="incoming_id" readonly="1" invisible="not incoming_id"/>
+                            <field name="parent_outgoing_id" readonly="1" invisible="not parent_outgoing_id"/>
                             <field name="create_uid" string="Инициатор" readonly="1"/>
                             <field name="create_date" string="Дата создания" readonly="1"/>
                         </group>

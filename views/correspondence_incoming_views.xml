@@ -73,6 +73,12 @@
             <form string="Входящая корреспонденция">
 
                 <header>
+                    <button name="action_create_outgoing"
+                            string="Создать исходящее"
+                            type="object"
+                            class="btn-secondary"
+                            icon="fa-envelope"
+                            invisible="state == 'draft'"/>
                     <!-- ========================================= -->
                     <!-- Кнопка: На согласование (draft/revision)  -->
                     <!-- ========================================= -->
@@ -131,6 +137,18 @@
                 </header>
 
                 <sheet>
+                    <!-- Smart buttons (правый верхний угол формы) -->
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_outgoing"
+                                type="object"
+                                class="oe_stat_button"
+                                icon="fa-envelope"
+                                invisible="state == 'draft'">
+                            <field name="outgoing_count"
+                                   widget="statinfo"
+                                   string="Исходящие"/>
+                        </button>
+                    </div>
                     <!-- ========================================= -->
                     <!-- Информационные баннеры                    -->
                     <!-- ========================================= -->

@@ -99,6 +99,21 @@ class IncomingDocument(models.Model):
         for rec in self:
             rec.assignment_count = len(rec.assignment_line_ids)
 
+# Связанные исходящие письма (созданные из этого входящего)
+    outgoing_ids = fields.One2many(
+        "corr.outgoing",
+        "incoming_id",
+        string="Исходящие письма",
+    )
+    outgoing_count = fields.Integer(
+        string="Кол-во исходящих",
+        compute="_compute_outgoing_count",
+    )
+
+    @api.depends("outgoing_ids")
+    def _compute_outgoing_count(self):
+        for rec in self:
+            rec.outgoing_count = len(rec.outgoing_ids)
                 
                 
     # Computed поля для видимости колонок в таблице получателей
@@ -514,6 +529,48 @@ class IncomingDocument(models.Model):
         # Переводим в rework
         self.write({"state": "rework"})
 
+    def action_view_outgoing(self): 
+        """
+        Открывает список исходящих писем, созданных из этого входящего.
+        Если есть только одно — открывает форму, иначе — список.
+        В context передаём default_incoming_id чтобы кнопка "Создать"
+        в открывшемся списке автоматически связывала новое исходящее
+        с этим входящим.
+        """
+        self.ensure_one()
+        action = {
+            "type": "ir.actions.act_window",
+            "name": _("Исходящие письма"),
+            "res_model": "corr.outgoing",
+            "domain": [("incoming_id", "=", self.id)],
+            "context": {
+                "default_incoming_id": self.id,
+            },
+        }
+        # Если ровно одно — открываем сразу в форме
+        if self.outgoing_count == 1:
+            action["view_mode"] = "form"
+            action["res_id"] = self.outgoing_ids.id
+        else:
+            action["view_mode"] = "list,form"
+        return action
+    
+    def action_create_outgoing(self):
+        """
+        Открывает новую форму исходящего письма с предзаполненным incoming_id.
+        Используется кнопкой "Создать исходящее" в шапке входящего.
+        """
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Новое исходящее"),
+            "res_model": "corr.outgoing",
+            "view_mode": "form",
+            "target": "current",
+            "context": {
+                "default_incoming_id": self.id,
+            },
+        }
     # ---------------------------------------------------------
     # Закрытие документа без заданий
     # ---------------------------------------------------------
