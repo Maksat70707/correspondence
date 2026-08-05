@@ -247,6 +247,7 @@
                                     <field name="user_id" readonly="id != False"/>
                                     <field name="delegated" column_invisible="1"/>
                                     <field name="resolution_id" readonly="id != False"/>
+                                    <field name="task" readonly="id != False"/>
                                     <field name="deadline" readonly="id != False"/>
                                     <field name="report_needed" readonly="id != False"/>
                                     <field name="status"/>
@@ -255,27 +256,6 @@
                                     <field name="attachment_ids" widget="many2many_binary" string="Вложения"/>
                                     <field name="assigner_id" readonly="1"/>
                                     <field name="original_user_id" invisible="not delegated"/>
-                                </list>
-                            </field>
-                        </page>
-                        <!-- Вкладка: Корреспонденты -->
-                        <page string="Корреспонденты" name="correspondents">
-                            <field name="show_col_full_name" invisible="1"/>
-                            <field name="show_col_address" invisible="1"/>
-                            <field name="show_col_position" invisible="1"/>
-                            <field name="show_col_email" invisible="1"/>
-                            <field name="show_col_phone" invisible="1"/>
-
-                            <field name="correspondent_line_ids" nolabel="1" colspan="2"
-                                readonly="state not in ['draft', 'revision']">
-                                <list editable="bottom">
-                                    <field name="name" width="200px"/>
-                                    <field name="shipment_method_ids" widget="many2many_tags" options="{'no_create': True}" width="250px"/>
-                                    <field name="full_name" width="180px" column_invisible="not parent.show_col_full_name"/>
-                                    <field name="address" width="200px" column_invisible="not parent.show_col_address"/>
-                                    <field name="position" width="150px" column_invisible="not parent.show_col_position"/>
-                                    <field name="email" width="180px" column_invisible="not parent.show_col_email"/>
-                                    <field name="phone" width="150px" column_invisible="not parent.show_col_phone"/>
                                 </list>
                             </field>
                         </page>

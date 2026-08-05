@@ -43,7 +43,7 @@ class IncomingDocument(models.Model):
         default=lambda self: (self.env.ref("correspondence.corp_email", raise_if_not_found=False) or self.env["correspondence.shipment.method"]).ids,
     )
     doc_arrival_date = fields.Date(
-        string="Дата входящего документа")
+        string="Дата входящего документа", required=True)
 
     correspondent_line_ids = fields.One2many(
         "correspondence.correspondent.line",
@@ -65,7 +65,7 @@ class IncomingDocument(models.Model):
     )
 
     external_number = fields.Char(
-        string="Внешний исходящий номер")
+        string="Внешний исходящий номер отправителя")
 
     attachment_mail_ids = fields.Many2many(
         "ir.attachment",
@@ -301,11 +301,6 @@ class IncomingDocument(models.Model):
 
     def _on_return(self, new_state=None, old_state=None, reason=None):
         """При возврате документа на доработку"""
-        self.message_post(
-            body=Markup(_("Документ возвращён на доработку.<br/><b>Причина:</b> %s")) % (reason or _("Не указана")),
-            message_type='notification',
-            subtype_xmlid='mail.mt_note',
-        )
         # Очищаем согласующих
         self.state_agreement_line_ids.unlink()
         
