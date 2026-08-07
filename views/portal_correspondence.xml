@@ -83,11 +83,11 @@
                         
                         <!-- Кнопка подписания -->
                         <t t-if="document.state == 'approval_medical_examination' and can_sign">
-                            <button type="button"
-                                class="btn btn-primary btn-lg o_corr_portal_sign_btn"
+                            <button type="button" class="btn btn-primary btn-lg"
                                 t-att-data-document-id="document.id"
                                 t-att-data-partner-id="current_partner.id"
-                                t-att-data-document-name="document.name">
+                                t-att-data-document-name="document.name"
+                                onclick="signCorrespondenceEsp(this)">
                                 <i class="fa fa-pencil"/> Подписать ЭЦП
                             </button>
                         </t>
@@ -242,6 +242,67 @@
             </div>
         </t>
         
+        <!-- JavaScript для подписания -->
+        <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+        <script src="/web/static/lib/jquery.blockUI/jquery.blockUI.js"></script>
+        <script>
+            function signCorrespondenceEsp(button) {
+                var documentId = button.getAttribute('data-document-id');
+                var partnerId = button.getAttribute('data-partner-id');
+                var name = button.getAttribute('data-document-name');
+                var model = 'corr.outgoing';
+                var xml = `&lt;data&gt;&lt;model&gt;corr.outgoing&lt;/model&gt;&lt;id&gt;${documentId}&lt;/id&gt;&lt;uid&gt;${partnerId}&lt;/uid&gt;&lt;display_name&gt;${name}&lt;/display_name&gt;&lt;n&gt;${name}&lt;/n&gt;&lt;/data&gt;`
+                
+                $.blockUI({ message: 'Подписание документа...' });
+                
+                if (window.hasOwnProperty('webSocket')) {
+                    if (webSocket.readyState === webSocket.OPEN) {
+                        basicsSign(xml, function (result) {
+                            if (result.status === true &amp;&amp; result.responseObject &amp;&amp; typeof result.responseObject === 'object' &amp;&amp; Object.keys(result.responseObject)) {
+                                fetch('/correspondence/sign/esp/success', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({
+                                        document_id: documentId,
+                                        uid: partnerId,
+                                        name: name,
+                                        xml: result.responseObject["result"][0]
+                                    }),
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.result.status === 200) {
+                                        window.location.href = data.result.redirect_url || "/correspondence/signed/success";
+                                    } else {
+                                        alert(data.result.message);
+                                    }
+                                })
+                                .catch(error => {
+                                    alert("Ошибка при отправке подписи: " + error);
+                                })
+                                .finally(() => {
+                                    $.unblockUI();
+                                });
+                            } else {
+                                alert("Ошибка при подписании. Попробуйте еще раз!");
+                                $.unblockUI();
+                            }
+                        });
+                    } else {
+                        initNcaLayer();
+                        alert("Ошибка при подключении NCALayer. Попробуйте еще раз!");
+                        $.unblockUI();
+                    }
+                } else {
+                    initNcaLayer();
+                    alert("NCALayer не подключен. Установите и запустите NCALayer.");
+                    $.unblockUI();
+                }
+            }
+        </script>
+        <script src="/appstream_approval/static/src/lib/ncalayer/ncalayer.js"></script>
     </template>
 
     <!-- ============================================== -->

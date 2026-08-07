@@ -12,6 +12,7 @@ class OutgoingDocument(models.Model):
         "mail.activity.mixin",
         "appstream.approval.mixin",
         "corr.outgoing.approve.process.mixin",
+        "portal.signing.mixin",
     ]
     _order = "id desc"
 
@@ -731,79 +732,7 @@ class OutgoingDocument(models.Model):
         """Вызывается после полного согласования (переход в done)"""
         pass
 
-    # ---------------------------------------------------------
-    # ЭЦП — подготовка документа для подписания
-    # ---------------------------------------------------------
-    def _get_signing_document(self):
-        """
-        Готовит документ для подписания через ЭЦП (CMS).
-        Вызывается из CorrespondenceSignEsp.get_sign_type.
-
-        Возвращает base64-encoded байты документа или False.
-
-        Приоритет источников:
-        1. Уже подписанная копия из appstream.approval.esp.attachment_ids —
-           для последовательного подписания (med. освидетельствование:
-           второй и третий подписант подписывают результат первого)
-        2. Файл из attachment_to_sign_ids — пользователь приложил вручную
-           (обязательно для type=simple, опционально для остальных)
-        3. Сгенерированный PDF из шаблона типа документа (medical_checkup,
-           explanation, medical_examination, job_offer, reference)
-        """
-        self.ensure_one()
-
-        # 1. Уже подписанная копия — для последовательных подписантов
-        approval_esp = self.env['appstream.approval.esp'].sudo().search(
-            [('model', '=', self._name), ('res_id', '=', self.id)],
-            order='id desc', limit=1,
-        )
-        if approval_esp and approval_esp.attachment_ids:
-            return approval_esp.attachment_ids[0].datas
-
-        # 2. Приложенный пользователем файл
-        if self.attachment_to_sign_ids:
-            return self.attachment_to_sign_ids[:1].datas
-
-        # 3. Сгенерированный из шаблона отчёт
-        report = self._get_signing_report()
-        if not report:
-            return False
-
-        pdf_bytes, _ext = report.sudo().render_docx(
-            report.report_name, [self.id], data={},
-        )
-        if not pdf_bytes:
-            return False
-        return base64.b64encode(pdf_bytes)
-
-    def _get_signing_report(self):
-        """
-        Возвращает ir.actions.report для текущего типа документа.
-
-        У типов с языковыми вариантами (medical_examination, job_offer,
-        reference) берём русскую версию. Для типов без шаблонного отчёта
-        (simple, change_conditions, guarantee) возвращает False — там
-        ожидается attachment_to_sign_ids.
-        """
-        self.ensure_one()
-
-        type_to_report = {
-            'correspondence.medical_checkup':     'correspondence.correspondence_medical_checkup_pdf',
-            'correspondence.explanation':         'correspondence.correspondence_explanation_request_pdf',
-            'correspondence.medical_examination': 'correspondence.correspondence_medical_examination_pdf',
-            'correspondence.job_offer':           'correspondence.correspondence_job_offer_pdf',
-            'correspondence.reference':           'correspondence.correspondence_reference_letter_pdf',
-        }
-
-        if not self.type_id:
-            return False
-
-        type_xmlid = self.type_id.get_external_id().get(self.type_id.id)
-        report_xmlid = type_to_report.get(type_xmlid)
-        if not report_xmlid:
-            return False
-
-        return self.env.ref(report_xmlid, raise_if_not_found=False)
+    
     
     def _selection_label(self, fname, lang):
         """Возвращает переведённый лейбл значения Selection-поля."""
@@ -1604,6 +1533,43 @@ class OutgoingDocument(models.Model):
 
         return report.sudo().report_action(self, data={}, config=False)
 
+    
+    # ---------------------------------------------------------
+    # Методы для портального подписания (medical_examination)
+    # ---------------------------------------------------------
+
+    def _get_portal_signers(self):
+        """
+        Возвращает партнёров для портального подписания.
+        Для типа medical_examination - это medical_worker_id.
+        """
+        self.ensure_one()
+
+        medical_examination_type = self.env.ref(
+            'correspondence.medical_examination',
+            raise_if_not_found=False
+        )
+
+        if self.type_id == medical_examination_type and self.medical_worker_id:
+            return self.medical_worker_id
+
+        return self.env['res.partner']
+
+    def _portal_signing_complete(self):
+        """
+        Fallback: вызывается из portal_signing_mixin если _process_post_approval
+        не доступен. В штатном потоке НЕ вызывается — вся логика перехода
+        обрабатывается через _process_post_approval.
+        """
+        self.ensure_one()
+        next_state = self._get_next_state_after(self.state)
+        if not next_state:
+            next_state = 'processing'
+
+        if hasattr(self, "method_in_middle"):
+            self.method_in_middle()
+        self.sudo().get_agreement_lines(next_state)
+        
     # ---------------------------------------------------------
     # Проверки типа документа
     # ---------------------------------------------------------

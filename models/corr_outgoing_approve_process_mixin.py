@@ -439,7 +439,7 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
         else:
             raise ValidationError(_("Вы не являетесь текущим согласующим"))
         
-    def _process_post_approval(self, coordinator, next_state=None, cur_state=None):
+    def _process_post_approval(self, coordinator, next_state=None, cur_state=None, from_portal=False):
         """
         Единая логика после согласования — вызывается из after_script
         (системное И портальное подписание ЭЦП через /sign_esp).
@@ -493,7 +493,14 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
             for nc in next_coordinators:
                 nc.sudo().status = "in_progress"
                 self.action_notify("agreement", nc.user_id)
-
+                
+            # Планируем activity ТОЛЬКО при портальном подписании.
+            # При системном пути activity планируется фреймворком
+            # (_action_approve → schedule_activity после after_script).
+            if from_portal:
+                self._schedule_approval_activity(
+                    users=next_coordinators.mapped('user_id')
+                )
             self.sudo().write({"state": cur_state})
         else:
             # 4. Все согласовали — переход на следующий статус

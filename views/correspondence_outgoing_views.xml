@@ -99,13 +99,13 @@
                             confirm="Подтвердить согласование?"/>
 
                     <!-- Утвердить с ЭЦП (approval) - виджет для NCALayer -->
-                    <widget name="ncalayer_sign_button"
+                    <widget name="sign_esp"
                             string="Утвердить с ЭЦП"
                             highlight="True"
                             invisible="not button_approve_enabled or state != 'approval' or not user_esp"/>
 
                     <!-- Подписать с ЭЦП (approval_medical_examination) - виджет для NCALayer -->
-                    <widget name="ncalayer_sign_button"
+                    <widget name="sign_esp"
                             string="Подписать с ЭЦП"
                             highlight="True"
                             invisible="not button_approve_enabled or state != 'approval_medical_examination' or not user_esp"/>

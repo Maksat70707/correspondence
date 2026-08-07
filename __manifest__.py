@@ -51,10 +51,4 @@
         # Reports
         'reports/correspondence_reports.xml',
     ],
-    'assets': {
-        'web.assets_frontend': [
-            'appstream_approval/static/src/lib/ncalayer/ncalayer_client.js',
-            'correspondence/static/src/js/portal_sign.js',
-        ],
-    },
 }
