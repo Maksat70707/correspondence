@@ -83,7 +83,7 @@
                     <!-- Кнопка: На согласование (draft/revision)  -->
                     <!-- ========================================= -->
                     <button name="action_send_to_approval"
-                            string="На согласование"
+                            string="На ознакомление"
                             type="object"
                             class="btn-primary"
                             invisible="state not in ['draft', 'revision']"
@@ -95,7 +95,7 @@
                     
                     <!-- Согласовать -->
                     <button name="action_approve"
-                            string="Согласовать"
+                            string="Поручить исполнение"
                             type="object"
                             class="btn-primary"
                             invisible="not button_approve_enabled or state in ['draft', 'revision', 'execution', 'rework', 'done', 'canceled']"

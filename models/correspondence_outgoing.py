@@ -12,7 +12,6 @@ class OutgoingDocument(models.Model):
         "mail.activity.mixin",
         "appstream.approval.mixin",
         "corr.outgoing.approve.process.mixin",
-        "portal.signing.mixin",
     ]
     _order = "id desc"
 
@@ -1586,42 +1585,6 @@ class OutgoingDocument(models.Model):
         return report.sudo().report_action(self, data={}, config=False)
 
     
-    # ---------------------------------------------------------
-    # Методы для портального подписания (medical_examination)
-    # ---------------------------------------------------------
-
-    def _get_portal_signers(self):
-        """
-        Возвращает партнёров для портального подписания.
-        Для типа medical_examination - это medical_worker_id.
-        """
-        self.ensure_one()
-
-        medical_examination_type = self.env.ref(
-            'correspondence.medical_examination',
-            raise_if_not_found=False
-        )
-
-        if self.type_id == medical_examination_type and self.medical_worker_id:
-            return self.medical_worker_id
-
-        return self.env['res.partner']
-
-    def _portal_signing_complete(self):
-        """
-        Fallback: вызывается из portal_signing_mixin если _process_post_approval
-        не доступен. В штатном потоке НЕ вызывается — вся логика перехода
-        обрабатывается через _process_post_approval.
-        """
-        self.ensure_one()
-        next_state = self._get_next_state_after(self.state)
-        if not next_state:
-            next_state = 'processing'
-
-        if hasattr(self, "method_in_middle"):
-            self.method_in_middle()
-        self.sudo().get_agreement_lines(next_state)
-        
     # ---------------------------------------------------------
     # Проверки типа документа
     # ---------------------------------------------------------

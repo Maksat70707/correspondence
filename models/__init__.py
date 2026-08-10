@@ -1,7 +1,6 @@
 # Сначала mixin (должен быть загружен до моделей, которые его наследуют)
 from . import corr_incoming_approve_process_mixin
 from . import corr_outgoing_approve_process_mixin
-from . import portal_signing_mixin
 
 # Затем основные модели
 from . import correspondence_incoming
