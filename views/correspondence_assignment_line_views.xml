@@ -50,17 +50,6 @@
         </field>
     </record>
 
-    <!-- ACTION: базовый (kanban с переходом на документ) -->
-    <!-- Ограничен domain'ом: сотрудник видит только свои задания + те, что назначил сам, + те, где был в истории исполнителей -->
-    <record id="action_correspondence_assignment_line" model="ir.actions.act_window">
-        <field name="name">Поручения</field>
-        <field name="res_model">correspondence.assignment.line</field>
-        <field name="view_mode">kanban,list</field>
-        <field name="search_view_id" ref="view_assignment_tasks_search"/>
-        <field name="domain">['|', '|', ('user_id', '=', uid), ('assigner_id', '=', uid), ('executor_history_ids', 'in', uid)]</field>
-        <field name="context">{'search_default_filter_assigned_to_me': 1}</field>
-    </record>
-
     <!-- KANBAN -->
 
     <record id="view_assignment_line_kanban" model="ir.ui.view">
@@ -256,6 +245,19 @@
                 </searchpanel>
             </search>
         </field>
+    </record>
+
+    <!-- ACTION: базовый (kanban с переходом на документ) -->
+    <!-- Ограничен domain'ом: сотрудник видит только свои задания + те, что назначил сам, + те, где был в истории исполнителей -->
+    <!-- ВАЖНО: объявлен ПОСЛЕ view_assignment_tasks_search, на который ссылается.
+         Odoo грузит XML сверху вниз, ссылка вперёд ломает установку на чистой БД. -->
+    <record id="action_correspondence_assignment_line" model="ir.actions.act_window">
+        <field name="name">Поручения</field>
+        <field name="res_model">correspondence.assignment.line</field>
+        <field name="view_mode">kanban,list</field>
+        <field name="search_view_id" ref="view_assignment_tasks_search"/>
+        <field name="domain">['|', '|', ('user_id', '=', uid), ('assigner_id', '=', uid), ('executor_history_ids', 'in', uid)]</field>
+        <field name="context">{'search_default_filter_assigned_to_me': 1}</field>
     </record>
 
     <!-- TREE: Поручения -->

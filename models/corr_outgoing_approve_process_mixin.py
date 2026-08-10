@@ -547,6 +547,15 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
                     "certificate_status": current_coordinator.certificate_status,
                     "signed": current_coordinator.signed,
                     "qr": current_coordinator.qr,
+                    # Поля, добавленные в appstream_approval v4.
+                    # Их читает страница /signature_uuid/<uuid> — без переноса
+                    # она отрендерится с пустыми ФИО / ИИН / организацией.
+                    "fio": current_coordinator.fio,
+                    "iin": current_coordinator.iin,
+                    "bin_": current_coordinator.bin_,
+                    "organization": current_coordinator.organization,
+                    "certificate_template": current_coordinator.certificate_template,
+                    "uuid": current_coordinator.uuid,
                 })
             ]
 

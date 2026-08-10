@@ -301,8 +301,8 @@ class IncomingDocument(models.Model):
 
     def _on_return(self, new_state=None, old_state=None, reason=None):
         """При возврате документа на доработку"""
-        # Очищаем согласующих
-        self.state_agreement_line_ids.unlink()
+        # Очищаем согласующих (sudo: unlink=0 у секретаря)
+        self.sudo().state_agreement_line_ids.unlink()
         
         # Создаём activity для инициатора
         if self.create_uid:

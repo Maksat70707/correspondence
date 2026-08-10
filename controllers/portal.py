@@ -174,7 +174,7 @@ class CorrespondencePortalController(http.Controller):
 
         return request.make_response(file_content, headers=headers)
 
-    @http.route(['/correspondence/sign/esp/success'], type='json', auth="user", website=True)
+    @http.route(['/correspondence/sign/esp/success'], type='jsonrpc', auth="user", website=True)
     def sign_esp_success(self, **kwargs):
         """Обработка успешного подписания ЭЦП с портала (через NCANode)"""
         data = json.loads(request.httprequest.data.decode('utf-8'))

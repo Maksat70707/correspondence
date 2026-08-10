@@ -740,6 +740,44 @@ class OutgoingDocument(models.Model):
         selection = dict(field._description_selection(self.env))
         return selection.get(self[fname], '')
 
+    # ---------------------------------------------------------
+    # ЭЦП: какой объект реально подписывается
+    # ---------------------------------------------------------
+
+    def _get_esp_document_to_sign(self):
+        """
+        Возвращает base64 объекта, который NCALayer должен покрыть подписью,
+        либо False — тогда appstream_approval откатится на подпись XML-дампа
+        записи (`generate_signable_xml()`).
+
+        Порядок:
+        1. Если по документу уже есть сохранённая CMS (`appstream.approval.esp`)
+           — отдаём её, чтобы следующий подписант ДО-подписал существующую
+           цепочку, а не создал новую поверх исходного файла.
+        2. Иначе — исходящее письмо из `attachment_to_sign_ids`
+           (приоритет у PDF, при его отсутствии берём первый файл).
+        3. Если подписывать нечего (типы с печатной формой, где файл
+           генерируется отчётом) — возвращаем False.
+        """
+        self.ensure_one()
+
+        esp = self.env["appstream.approval.esp"].sudo().search(
+            [("model", "=", self._name), ("res_id", "=", self.id)],
+            order="id desc",
+            limit=1,
+        )
+        if esp and esp.attachment_ids:
+            # До-подписание уже существующей CMS
+            return esp.attachment_ids[0].datas or False
+
+        attachments = self.attachment_to_sign_ids
+        if not attachments:
+            return False
+
+        pdf = attachments.filtered(lambda a: a.mimetype == "application/pdf")
+        attachment = pdf[:1] or attachments[:1]
+        return attachment.datas or False
+
     def _on_reject(self, old_state=None, reason=None):
         """При отклонении документа согласующими"""
         current_coordinator = self.get_current_coordinator() if hasattr(self, "get_current_coordinator") else None
@@ -755,6 +793,12 @@ class OutgoingDocument(models.Model):
 
         # Очищаем согласующих (с sudo для обхода прав)
         self.sudo().state_agreement_line_ids.unlink()
+
+        # Сбрасываем данные ЭЦП (appstream.approval.esp + подписанные history-линии),
+        # иначе при повторном подписании контроллер /sign_esp вернёт
+        # "Вы уже подписали этот документ ранее" (сверка ИИН с предыдущей CMS/XML).
+        self.sudo().unlink_approval_esp()
+        self.sudo().number_of_esp_signs = 0
 
         self.message_post(
             body=Markup(_("Документ отклонён.<br/><b>Причина:</b> %s")) % (reason or _("Не указана")),
@@ -782,9 +826,12 @@ class OutgoingDocument(models.Model):
         # Очищаем согласующих
         self.sudo().state_agreement_line_ids.unlink()
 
-        # Сбрасываем счётчик ЭЦП подписей при возврате на доработку
+        # Сбрасываем счётчик ЭЦП подписей и данные ЭЦП при возврате на доработку.
+        # unlink_approval_esp() обязателен: без него контроллер /sign_esp сравнит
+        # ИИН нового подписания с сохранённой CMS/XML и откажет тому же подписанту.
         if new_state == 'draft':
             self.sudo().number_of_esp_signs = 0
+        self.sudo().unlink_approval_esp()
 
         self.message_post(
             body=Markup(_("Документ возвращён на доработку.<br/><b>Причина:</b> %s")) % (reason or _("Не указана")),
@@ -900,9 +947,14 @@ class OutgoingDocument(models.Model):
         if not self.is_initiator:
             raise UserError(_("Отменить документ может только инициатор."))
 
-        # Очищаем согласующих и activity
-        self.state_agreement_line_ids.unlink()
+        # Очищаем согласующих и activity (sudo: unlink=0 у секретаря)
+        self.sudo().state_agreement_line_ids.unlink()
         self._remove_approval_activity()
+
+        # Сбрасываем данные ЭЦП, чтобы документ можно было подписать заново,
+        # если его вернут из отменённого состояния
+        self.sudo().unlink_approval_esp()
+        self.sudo().number_of_esp_signs = 0
 
         self.write({"state": "canceled"})
 

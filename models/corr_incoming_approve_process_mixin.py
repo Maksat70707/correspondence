@@ -20,12 +20,16 @@ class CorrIncomingApproveProcessMixin(models.AbstractModel):
         if hasattr(self, "method_on_start"):
             self.method_on_start()
 
-        # Удаляем старые линии
-        self.state_agreement_line_ids.unlink()
+        # Удаляем старые линии.
+        # sudo() обязателен: по ir.model.access.csv у секретаря на
+        # appstream.approval.agreement.line unlink=0, а у сотрудника
+        # ещё и create=0. Без него отправка входящего на согласование
+        # падает с AccessError у всех, кроме админа.
+        self.sudo().state_agreement_line_ids.unlink()
 
         # Этапы без согласования — просто переводим в статус
         if state in ('execution', 'rework', 'revision'):
-            return self.write({"state": state})
+            return self.sudo().write({"state": state})
 
         # Этапы с согласованием (review, report)
         agreement_lines = []
@@ -43,8 +47,8 @@ class CorrIncomingApproveProcessMixin(models.AbstractModel):
         )
         agreement_lines += approval_groups_agreement_lines
 
-        # Назначаем согласующих
-        self.state_agreement_line_ids = agreement_lines
+        # Назначаем согласующих (sudo() — см. комментарий к unlink выше)
+        self.sudo().state_agreement_line_ids = agreement_lines
         
         # Принудительно сохраняем записи
         self.env.flush_all()
@@ -229,7 +233,10 @@ class CorrIncomingApproveProcessMixin(models.AbstractModel):
                 else:
                     new_status += " со статуса '" + state + "'"
 
-            self.state_agreement_history_line_ids = [
+            # sudo(): у секретаря и сотрудника create=0 на
+            # appstream.approval.agreement.history.line. В исходящих
+            # это уже сделано, здесь было упущено.
+            self.sudo().state_agreement_history_line_ids = [
                 Command.create(
                     {
                         "model": self._name,
@@ -246,6 +253,15 @@ class CorrIncomingApproveProcessMixin(models.AbstractModel):
                         "certificate_status": current_coordinator.certificate_status,
                         "signed": current_coordinator.signed,
                         "qr": current_coordinator.qr,
+                        # Поля, добавленные в appstream_approval v4.
+                        # Их читает страница /signature_uuid/<uuid> — без переноса
+                        # она отрендерится с пустыми ФИО / ИИН / организацией.
+                        "fio": current_coordinator.fio,
+                        "iin": current_coordinator.iin,
+                        "bin_": current_coordinator.bin_,
+                        "organization": current_coordinator.organization,
+                        "certificate_template": current_coordinator.certificate_template,
+                        "uuid": current_coordinator.uuid,
                     },
                 )
             ]

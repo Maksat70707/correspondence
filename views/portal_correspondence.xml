@@ -242,67 +242,143 @@
             </div>
         </t>
         
-        <!-- JavaScript для подписания -->
-        <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-        <script src="/web/static/lib/jquery.blockUI/jquery.blockUI.js"></script>
+        <!-- ============================================== -->
+        <!-- Подписание ЭЦП через NCALayer                 -->
+        <!--                                               -->
+        <!-- Использует те же эндпоинты appstream_approval -->
+        <!-- v4, что и десктопный виджет sign_esp:         -->
+        <!--   /esp/get_sign_obj/<id>                      -->
+        <!--   /sign_esp            (с partnerId)          -->
+        <!--   /esp/save_signed_pdf/<id>                   -->
+        <!--                                               -->
+        <!-- Старый путь через NCANode (/correspondence/    -->
+        <!-- sign/esp/success) больше не используется:      -->
+        <!-- v4 разбирает сертификат локально.              -->
+        <!-- ============================================== -->
+        <script src="/appstream_approval/static/src/lib/ncalayer/ncalayer_client.js"></script>
         <script>
-            function signCorrespondenceEsp(button) {
-                var documentId = button.getAttribute('data-document-id');
-                var partnerId = button.getAttribute('data-partner-id');
-                var name = button.getAttribute('data-document-name');
-                var model = 'corr.outgoing';
-                var xml = `&lt;data&gt;&lt;model&gt;corr.outgoing&lt;/model&gt;&lt;id&gt;${documentId}&lt;/id&gt;&lt;uid&gt;${partnerId}&lt;/uid&gt;&lt;display_name&gt;${name}&lt;/display_name&gt;&lt;n&gt;${name}&lt;/n&gt;&lt;/data&gt;`
-                
-                $.blockUI({ message: 'Подписание документа...' });
-                
-                if (window.hasOwnProperty('webSocket')) {
-                    if (webSocket.readyState === webSocket.OPEN) {
-                        basicsSign(xml, function (result) {
-                            if (result.status === true &amp;&amp; result.responseObject &amp;&amp; typeof result.responseObject === 'object' &amp;&amp; Object.keys(result.responseObject)) {
-                                fetch('/correspondence/sign/esp/success', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                    },
-                                    body: JSON.stringify({
-                                        document_id: documentId,
-                                        uid: partnerId,
-                                        name: name,
-                                        xml: result.responseObject["result"][0]
-                                    }),
-                                })
-                                .then(response => response.json())
-                                .then(data => {
-                                    if (data.result.status === 200) {
-                                        window.location.href = data.result.redirect_url || "/correspondence/signed/success";
-                                    } else {
-                                        alert(data.result.message);
-                                    }
-                                })
-                                .catch(error => {
-                                    alert("Ошибка при отправке подписи: " + error);
-                                })
-                                .finally(() => {
-                                    $.unblockUI();
-                                });
-                            } else {
-                                alert("Ошибка при подписании. Попробуйте еще раз!");
-                                $.unblockUI();
-                            }
-                        });
-                    } else {
-                        initNcaLayer();
-                        alert("Ошибка при подключении NCALayer. Попробуйте еще раз!");
-                        $.unblockUI();
+            // Минимальный JSON-RPC клиент: маршруты Odoo type='jsonrpc'
+            // ждут конверт {jsonrpc, method:"call", params} и отвечают {result}.
+            async function corrRpc(url, params) {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        jsonrpc: '2.0',
+                        method: 'call',
+                        params: params || {},
+                    }),
+                });
+                const payload = await response.json();
+                if (payload.error) {
+                    const d = payload.error.data || {};
+                    throw new Error(d.message || payload.error.message || 'Ошибка сервера');
+                }
+                return payload.result;
+            }
+
+            async function signCorrespondenceEsp(button) {
+                const documentId = parseInt(button.getAttribute('data-document-id'), 10);
+                const partnerId = parseInt(button.getAttribute('data-partner-id'), 10);
+                const resModel = 'corr.outgoing';
+
+                const originalHtml = button.innerHTML;
+                const lock = (text) => {
+                    button.disabled = true;
+                    button.innerHTML = '&lt;i class="fa fa-spinner fa-spin"&gt;&lt;/i&gt; ' + text;
+                };
+                const unlock = () => {
+                    button.disabled = false;
+                    button.innerHTML = originalHtml;
+                };
+
+                try {
+                    lock('Подготовка документа...');
+
+                    // 1. Что именно подписываем
+                    const signObj = await corrRpc('/esp/get_sign_obj/' + documentId, { resModel: resModel });
+                    if (signObj.error) {
+                        alert(signObj.error);
+                        unlock();
+                        return;
                     }
-                } else {
-                    initNcaLayer();
-                    alert("NCALayer не подключен. Установите и запустите NCALayer.");
-                    $.unblockUI();
+
+                    // 2. Подключение к NCALayer
+                    lock('Подключение к NCALayer...');
+                    let client;
+                    try {
+                        client = new window.NCALayerClient();
+                        await client.connect();
+                    } catch (connectErr) {
+                        console.error(connectErr);
+                        alert('Не удалось подключиться к NCALayer.\n' +
+                              'Установите и запустите NCALayer, затем попробуйте снова.');
+                        unlock();
+                        return;
+                    }
+
+                    // 3. Подписание. Параметры совпадают с десктопным виджетом:
+                    //    encapsulate=true — исходные данные вкладываются внутрь CMS,
+                    //    OID 1.3.6.1.5.5.7.3.4 — ключ для подписи документов.
+                    lock('Подписание...');
+                    const signedData = await client.basicsSign(
+                        ['PKCS12'],
+                        signObj.esp_type,
+                        signObj.obj_to_sign,
+                        { decode: true, encapsulate: true, digested: false, tsaProfile: {} },
+                        { extKeyUsageOids: ['1.3.6.1.5.5.7.3.4'] },
+                        'ru'
+                    );
+
+                    const ok = signedData &amp;&amp; (
+                        (typeof signedData === 'string' &amp;&amp; signedData.trim() !== '') ||
+                        (Array.isArray(signedData) &amp;&amp; signedData.length &gt; 0)
+                    );
+                    if (!ok) {
+                        alert('Подпись не получена. Попробуйте ещё раз.');
+                        unlock();
+                        return;
+                    }
+
+                    // 4. Проверка подписанта и запись в согласование.
+                    //    partnerId включает сверку ИИН с partner.vat вместо
+                    //    employee.identification_id.
+                    lock('Проверка сертификата...');
+                    const result = await corrRpc('/sign_esp', {
+                        signed_data: signedData,
+                        esp_type: signObj.esp_type,
+                        resModel: resModel,
+                        resId: documentId,
+                        partnerId: partnerId,
+                    });
+                    if (result.status !== 200) {
+                        alert(result.message || 'Ошибка при проверке подписи');
+                        unlock();
+                        return;
+                    }
+
+                    // 5. Сохранение подписанного файла
+                    lock('Сохранение...');
+                    const saved = await corrRpc('/esp/save_signed_pdf/' + documentId, {
+                        resModel: resModel,
+                        espType: signObj.esp_type,
+                        signedCMS: signedData,
+                        qrImage: result.qrImage,
+                    });
+                    if (saved.status !== 200) {
+                        alert(saved.message || 'Не удалось сохранить подписанный документ');
+                        unlock();
+                        return;
+                    }
+
+                    window.location.reload();
+                } catch (err) {
+                    console.error(err);
+                    alert('Ошибка при подписании: ' + (err.message || err));
+                    unlock();
                 }
             }
         </script>
-        <script src="/appstream_approval/static/src/lib/ncalayer/ncalayer.js"></script>
     </template>
 
     <!-- ============================================== -->
