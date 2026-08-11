@@ -292,12 +292,15 @@ class IncomingDocument(models.Model):
         pass
 
     def _on_reject(self, old_state=None, reason=None):
-        """При отклонении документа"""
-        self.message_post(
-            body=Markup(_("Документ отклонён.<br/><b>Причина:</b> %s")) % (reason or _("Не указана")),
-            message_type='notification',
-            subtype_xmlid='mail.mt_note',
-        )
+        """
+        При отклонении документа.
+
+        Тело пустое намеренно: сообщение в чаттер публикует
+        appstream_approval/wizard/approval_reject_wizard.py:action_reject
+        до вызова record.action_reject() -> _on_reject. Дублировать не нужно.
+        Хук оставлен как точка расширения.
+        """
+        return
 
     def _on_return(self, new_state=None, old_state=None, reason=None):
         """При возврате документа на доработку"""

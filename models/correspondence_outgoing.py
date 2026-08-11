@@ -799,11 +799,9 @@ class OutgoingDocument(models.Model):
         self.sudo().unlink_approval_esp()
         self.sudo().number_of_esp_signs = 0
 
-        self.message_post(
-            body=Markup(_("Документ отклонён.<br/><b>Причина:</b> %s")) % (reason or _("Не указана")),
-            message_type='notification',
-            subtype_xmlid='mail.mt_note',
-        )
+        # Сообщение в чаттер здесь НЕ постим: его публикует
+        # appstream_approval/wizard/approval_reject_wizard.py:action_reject
+        # до вызова record.action_reject() -> _on_reject.
 
     def _on_return(self, new_state=None, old_state=None, reason=None):
         """При возврате документа на доработку"""
@@ -832,11 +830,11 @@ class OutgoingDocument(models.Model):
             self.sudo().number_of_esp_signs = 0
         self.sudo().unlink_approval_esp()
 
-        self.message_post(
-            body=Markup(_("Документ возвращён на доработку.<br/><b>Причина:</b> %s")) % (reason or _("Не указана")),
-            message_type='notification',
-            subtype_xmlid='mail.mt_note',
-        )
+        # Сообщение в чаттер здесь НЕ постим: его уже публикует
+        # appstream_approval/wizard/approval_return_wizard.py:action_return
+        # (красный текст + уведомление согласующих через partner_ids),
+        # и делает это до вызова _action_return -> _on_return.
+        # Возврат идёт только через этот визард, других путей нет.
 
         # Создаём activity для инициатора (с sudo для обхода прав)
         if self.create_uid:

@@ -75,7 +75,7 @@
                             type="object"
                             class="btn-secondary"
                             icon="fa-reply"
-                            invisible="state == 'draft'"/>
+                            invisible="state in ('draft', 'under_approval', 'approval', 'approval_medical_examination', 'processing')"/>
                     <!-- ========================================= -->
                     <!-- Кнопка: На согласование (draft)           -->
                     <!-- ========================================= -->
