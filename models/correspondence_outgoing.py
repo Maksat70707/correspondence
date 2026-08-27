@@ -12,6 +12,7 @@ class OutgoingDocument(models.Model):
         "mail.activity.mixin",
         "appstream.approval.mixin",
         "corr.outgoing.approve.process.mixin",
+        "portal.signing.mixin",
     ]
     _order = "id desc"
 
@@ -739,44 +740,6 @@ class OutgoingDocument(models.Model):
         selection = dict(field._description_selection(self.env))
         return selection.get(self[fname], '')
 
-    # ---------------------------------------------------------
-    # ЭЦП: какой объект реально подписывается
-    # ---------------------------------------------------------
-
-    def _get_esp_document_to_sign(self):
-        """
-        Возвращает base64 объекта, который NCALayer должен покрыть подписью,
-        либо False — тогда appstream_approval откатится на подпись XML-дампа
-        записи (`generate_signable_xml()`).
-
-        Порядок:
-        1. Если по документу уже есть сохранённая CMS (`appstream.approval.esp`)
-           — отдаём её, чтобы следующий подписант ДО-подписал существующую
-           цепочку, а не создал новую поверх исходного файла.
-        2. Иначе — исходящее письмо из `attachment_to_sign_ids`
-           (приоритет у PDF, при его отсутствии берём первый файл).
-        3. Если подписывать нечего (типы с печатной формой, где файл
-           генерируется отчётом) — возвращаем False.
-        """
-        self.ensure_one()
-
-        esp = self.env["appstream.approval.esp"].sudo().search(
-            [("model", "=", self._name), ("res_id", "=", self.id)],
-            order="id desc",
-            limit=1,
-        )
-        if esp and esp.attachment_ids:
-            # До-подписание уже существующей CMS
-            return esp.attachment_ids[0].datas or False
-
-        attachments = self.attachment_to_sign_ids
-        if not attachments:
-            return False
-
-        pdf = attachments.filtered(lambda a: a.mimetype == "application/pdf")
-        attachment = pdf[:1] or attachments[:1]
-        return attachment.datas or False
-
     def _on_reject(self, old_state=None, reason=None):
         """При отклонении документа согласующими"""
         current_coordinator = self.get_current_coordinator() if hasattr(self, "get_current_coordinator") else None
@@ -793,15 +756,10 @@ class OutgoingDocument(models.Model):
         # Очищаем согласующих (с sudo для обхода прав)
         self.sudo().state_agreement_line_ids.unlink()
 
-        # Сбрасываем данные ЭЦП (appstream.approval.esp + подписанные history-линии),
-        # иначе при повторном подписании контроллер /sign_esp вернёт
-        # "Вы уже подписали этот документ ранее" (сверка ИИН с предыдущей CMS/XML).
-        self.sudo().unlink_approval_esp()
-        self.sudo().number_of_esp_signs = 0
-
         # Сообщение в чаттер здесь НЕ постим: его публикует
         # appstream_approval/wizard/approval_reject_wizard.py:action_reject
         # до вызова record.action_reject() -> _on_reject.
+        # Верно и для v3, и для v4.
 
     def _on_return(self, new_state=None, old_state=None, reason=None):
         """При возврате документа на доработку"""
@@ -823,18 +781,13 @@ class OutgoingDocument(models.Model):
         # Очищаем согласующих
         self.sudo().state_agreement_line_ids.unlink()
 
-        # Сбрасываем счётчик ЭЦП подписей и данные ЭЦП при возврате на доработку.
-        # unlink_approval_esp() обязателен: без него контроллер /sign_esp сравнит
-        # ИИН нового подписания с сохранённой CMS/XML и откажет тому же подписанту.
+        # Сбрасываем счётчик ЭЦП подписей при возврате на доработку
         if new_state == 'draft':
             self.sudo().number_of_esp_signs = 0
-        self.sudo().unlink_approval_esp()
 
-        # Сообщение в чаттер здесь НЕ постим: его уже публикует
+        # Сообщение в чаттер здесь НЕ постим: его публикует
         # appstream_approval/wizard/approval_return_wizard.py:action_return
-        # (красный текст + уведомление согласующих через partner_ids),
-        # и делает это до вызова _action_return -> _on_return.
-        # Возврат идёт только через этот визард, других путей нет.
+        # до вызова _action_return -> _on_return. Верно и для v3, и для v4.
 
         # Создаём activity для инициатора (с sudo для обхода прав)
         if self.create_uid:
@@ -947,11 +900,6 @@ class OutgoingDocument(models.Model):
         # Очищаем согласующих и activity (sudo: unlink=0 у секретаря)
         self.sudo().state_agreement_line_ids.unlink()
         self._remove_approval_activity()
-
-        # Сбрасываем данные ЭЦП, чтобы документ можно было подписать заново,
-        # если его вернут из отменённого состояния
-        self.sudo().unlink_approval_esp()
-        self.sudo().number_of_esp_signs = 0
 
         self.write({"state": "canceled"})
 
@@ -1583,6 +1531,42 @@ class OutgoingDocument(models.Model):
         return report.sudo().report_action(self, data={}, config=False)
 
     
+    # ---------------------------------------------------------
+    # Методы для портального подписания (medical_examination)
+    # ---------------------------------------------------------
+
+    def _get_portal_signers(self):
+        """
+        Возвращает партнёров для портального подписания.
+        Для типа medical_examination - это medical_worker_id.
+        """
+        self.ensure_one()
+
+        medical_examination_type = self.env.ref(
+            'correspondence.medical_examination',
+            raise_if_not_found=False
+        )
+
+        if self.type_id == medical_examination_type and self.medical_worker_id:
+            return self.medical_worker_id
+
+        return self.env['res.partner']
+
+    def _portal_signing_complete(self):
+        """
+        Fallback: вызывается из portal_signing_mixin если _process_post_approval
+        не доступен. В штатном потоке НЕ вызывается — вся логика перехода
+        обрабатывается через _process_post_approval.
+        """
+        self.ensure_one()
+        next_state = self._get_next_state_after(self.state)
+        if not next_state:
+            next_state = 'processing'
+
+        if hasattr(self, "method_in_middle"):
+            self.method_in_middle()
+        self.sudo().get_agreement_lines(next_state)
+        
     # ---------------------------------------------------------
     # Проверки типа документа
     # ---------------------------------------------------------

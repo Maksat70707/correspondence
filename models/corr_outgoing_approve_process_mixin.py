@@ -404,8 +404,8 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
         Обрабатывает согласование через систему (кнопки в UI).
         Вызывается из after_script в XML workflow.
 
-        Портальное подписание идёт через /sign_esp appstream_approval v4:
-        контроллер вызывает action_approve(), дальше отрабатывает after_script.
+        Для портального подписания используется portal_sign_esp → _process_post_approval
+        напрямую (approver уже помечен как agreed в portal_sign_esp).
         """
         current_coordinator = self.get_current_coordinator()
         # Extension hook: подкласс (например, correspondence_extra) может
@@ -547,9 +547,7 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
                     "certificate_status": current_coordinator.certificate_status,
                     "signed": current_coordinator.signed,
                     "qr": current_coordinator.qr,
-                    # Поля, добавленные в appstream_approval v4.
-                    # Их читает страница /signature_uuid/<uuid> — без переноса
-                    # она отрендерится с пустыми ФИО / ИИН / организацией.
+                    # Поля сертификата: есть и в v3, и в v4.
                     "fio": current_coordinator.fio,
                     "iin": current_coordinator.iin,
                     "bin_": current_coordinator.bin_,
