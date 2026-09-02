@@ -3,6 +3,9 @@ from . import corr_incoming_approve_process_mixin
 from . import corr_outgoing_approve_process_mixin
 from . import portal_signing_mixin
 
+# Расширения моделей appstream_approval
+from . import appstream_approval_workflow
+
 # Затем основные модели
 from . import correspondence_incoming
 from . import correspondence_outgoing

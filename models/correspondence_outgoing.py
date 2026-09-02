@@ -652,17 +652,40 @@ class OutgoingDocument(models.Model):
     def write(self, vals):
         res = super().write(vals)
 
-        if vals.get('state') == 'processing':
-            for rec in self:
-                if not rec.name or rec.name == "---":
-                    rec.name = (
-                        self.env["ir.sequence"].sudo().next_by_code("correspondence.outgoing")
-                        or "---"
-                    )
+        # Номер здесь НЕ присваивается. Единственный триггер — ЭЦП-подпись
+        # на Утверждении (см. _assign_document_number и вызов из
+        # corr_outgoing_approve_process_mixin.add_to_history).
+        #
+        # Раньше здесь стоял `if vals.get('state') == 'processing'`. Это давало
+        # два бага: (1) номера ещё нет в момент вшивания штампа в файл;
+        # (2) любой транзитный write состояния 'processing' — а _action_approve
+        # выставляет state ДО выполнения before/after_script — сжигал номер
+        # раньше времени.
 
         if 'attachment_to_sign_ids' in vals or 'attachment_additional_sign_ids' in vals or 'attachment_extra_ids' in vals:
             self._fix_attachment_ownership()
         return res
+
+    def _assign_document_number(self):
+        """
+        Присваивает номер из последовательности, если он ещё не присвоен.
+
+        Вызывается один раз — при первой ЭЦП-подписи (Утверждающий сотрудник),
+        до брендирования файла.
+
+        Идемпотентен: второй и третий подписант в approval_medical_examination
+        номер не меняют и последовательность не расходуют.
+
+        sudo(): подписант на этапе Утверждения — не обязательно секретарь,
+        а поле name объявлено readonly.
+        """
+        Sequence = self.env["ir.sequence"].sudo()
+        for rec in self:
+            if not rec.name or rec.name == "---":
+                rec.sudo().name = (
+                    Sequence.next_by_code("correspondence.outgoing") or "---"
+                )
+        return self
 
     def _fix_attachment_ownership(self):
         """Привязывает вложения к записи для корректной работы прав доступа"""

@@ -1,0 +1,71 @@
+diff --git a/models/corr_outgoing_approve_process_mixin.py b/models/corr_outgoing_approve_process_mixin.py
+index 35b6aaf..342ebda 100644
+--- a/models/corr_outgoing_approve_process_mixin.py
++++ b/models/corr_outgoing_approve_process_mixin.py
+@@ -564,6 +564,13 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
+         if current_coordinator.signed:
+             line = current_coordinator
+ 
++            # Номер должен существовать ДО брендирования: он вшивается в
++            # боковую подпись как "{номер} от {дата}". Раньше номер присваивался
++            # только при переходе в processing, то есть уже ПОСЛЕ штампа —
++            # и в подписанный файл попадало "--- от 28.08.2026".
++            if hasattr(self, '_assign_document_number'):
++                self._assign_document_number()
++
+             # 1. Дополнительные документы — ВСЕГДА, без номера документа
+             if hasattr(self, 'attachment_additional_sign_ids') and self.attachment_additional_sign_ids:
+                 for attachment in self.attachment_additional_sign_ids:
+diff --git a/models/correspondence_outgoing.py b/models/correspondence_outgoing.py
+index f09896f..26633bf 100644
+--- a/models/correspondence_outgoing.py
++++ b/models/correspondence_outgoing.py
+@@ -652,18 +652,41 @@ class OutgoingDocument(models.Model):
+     def write(self, vals):
+         res = super().write(vals)
+ 
+-        if vals.get('state') == 'processing':
+-            for rec in self:
+-                if not rec.name or rec.name == "---":
+-                    rec.name = (
+-                        self.env["ir.sequence"].sudo().next_by_code("correspondence.outgoing")
+-                        or "---"
+-                    )
++        # Номер здесь НЕ присваивается. Единственный триггер — ЭЦП-подпись
++        # на Утверждении (см. _assign_document_number и вызов из
++        # corr_outgoing_approve_process_mixin.add_to_history).
++        #
++        # Раньше здесь стоял `if vals.get('state') == 'processing'`. Это давало
++        # два бага: (1) номера ещё нет в момент вшивания штампа в файл;
++        # (2) любой транзитный write состояния 'processing' — а _action_approve
++        # выставляет state ДО выполнения before/after_script — сжигал номер
++        # раньше времени.
+ 
+         if 'attachment_to_sign_ids' in vals or 'attachment_additional_sign_ids' in vals or 'attachment_extra_ids' in vals:
+             self._fix_attachment_ownership()
+         return res
+ 
++    def _assign_document_number(self):
++        """
++        Присваивает номер из последовательности, если он ещё не присвоен.
++
++        Вызывается один раз — при первой ЭЦП-подписи (Утверждающий сотрудник),
++        до брендирования файла.
++
++        Идемпотентен: второй и третий подписант в approval_medical_examination
++        номер не меняют и последовательность не расходуют.
++
++        sudo(): подписант на этапе Утверждения — не обязательно секретарь,
++        а поле name объявлено readonly.
++        """
++        Sequence = self.env["ir.sequence"].sudo()
++        for rec in self:
++            if not rec.name or rec.name == "---":
++                rec.sudo().name = (
++                    Sequence.next_by_code("correspondence.outgoing") or "---"
++                )
++        return self
++
+     def _fix_attachment_ownership(self):
+         """Привязывает вложения к записи для корректной работы прав доступа"""
+         attachment_fields = ['attachment_to_sign_ids', 'attachment_additional_sign_ids', 'attachment_extra_ids']

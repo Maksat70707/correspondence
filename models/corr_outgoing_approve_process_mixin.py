@@ -564,6 +564,13 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
         if current_coordinator.signed:
             line = current_coordinator
 
+            # Номер должен существовать ДО брендирования: он вшивается в
+            # боковую подпись как "{номер} от {дата}". Раньше номер присваивался
+            # только при переходе в processing, то есть уже ПОСЛЕ штампа —
+            # и в подписанный файл попадало "--- от 28.08.2026".
+            if hasattr(self, '_assign_document_number'):
+                self._assign_document_number()
+
             # 1. Дополнительные документы — ВСЕГДА, без номера документа
             if hasattr(self, 'attachment_additional_sign_ids') and self.attachment_additional_sign_ids:
                 for attachment in self.attachment_additional_sign_ids:
