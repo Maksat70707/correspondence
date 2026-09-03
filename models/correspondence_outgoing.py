@@ -98,6 +98,10 @@ class OutgoingDocument(models.Model):
         "user_id",
         string="Дополнительные согласующие",
         help="Согласующие на этапе 'Согласование' (после начальника инициатора)",
+        # Только внутренние пользователи. Портальный согласующий получил бы
+        # строку согласования и активность, до которых у него нет доступа в
+        # бэкенде, — документ встал бы намертво на этапе Согласования.
+        domain=[("share", "=", False)],
     )
 
     esp_signer_id = fields.Many2one(
@@ -560,13 +564,36 @@ class OutgoingDocument(models.Model):
 
     @api.depends('type_id', 'type_id.esp_signer_ids')
     def _compute_available_signer_ids(self):
-        all_users = self.env['res.users'].sudo().search([])
+        # share = True — портальные и публичные пользователи. Утверждающий
+        # подписывает ЭЦП в бэкенде, портальный туда не попадёт.
+        all_users = self.env['res.users'].sudo().search([('share', '=', False)])
         for rec in self:
             if rec.type_id and rec.type_id.esp_signer_ids:
-                rec.available_signer_ids = rec.type_id.esp_signer_ids
+                # Тип мог быть настроен до появления фильтра — чистим и здесь.
+                rec.available_signer_ids = rec.type_id.esp_signer_ids.filtered(
+                    lambda u: not u.share
+                )
             else:
                 rec.available_signer_ids = all_users
-                
+
+    @api.constrains('additional_approver_ids', 'esp_signer_id')
+    def _check_approvers_are_internal(self):
+        """
+        Домен фильтрует только выпадающий список. Запись могла прийти из
+        импорта, через API или остаться с тех пор, когда фильтра не было, —
+        поэтому проверяем ещё и на уровне ORM.
+        """
+        for rec in self:
+            share_users = rec.additional_approver_ids.filtered(lambda u: u.share)
+            if rec.esp_signer_id.share:
+                share_users |= rec.esp_signer_id
+            if share_users:
+                raise ValidationError(
+                    "Согласующим или утверждающим нельзя назначить портального "
+                    "пользователя — у него нет доступа к согласованию в системе.\n"
+                    "Проверьте: %s" % ", ".join(share_users.mapped("name"))
+                )
+
     @api.onchange('type_id')
     def _onchange_type_id_clear_signer(self):
         """Сбрасываем выбранного утверждающего, если он не в списке для нового типа."""
