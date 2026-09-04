@@ -524,6 +524,17 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
     @api.model
     def add_to_history(self, current_coordinator, state=False, status="Согласовано"):
         """Добавляет запись в историю согласования и вшивает ЭЦП в файл."""
+        # Сотрудник подписывает отказ тем же штатным виджетом sign_esp, что и
+        # согласие, — отличить их можно только по флагу, выставленному заранее
+        # кнопкой "Отказаться от мед. освидетельствования".
+        if (
+            status == "Согласовано"
+            and getattr(self, "medical_assessment_refusal", False)
+            and getattr(self, "employee_id", False)
+            and current_coordinator.user_id == self.employee_id.user_id
+        ):
+            status = "Отказ от мед. освидетельствования"
+
         if hasattr(self, "state_agreement_history_line_ids"):
             new_status = status
             if state:

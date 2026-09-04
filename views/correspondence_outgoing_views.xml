@@ -108,15 +108,30 @@
                     <widget name="sign_esp"
                             string="Подписать с ЭЦП"
                             highlight="True"
-                            invisible="not button_approve_enabled or state != 'approval_medical_examination' or not user_esp"/>
+                            invisible="not button_approve_enabled or state != 'approval_medical_examination' or not user_esp or medical_assessment_refusal"/>
 
-                    <!-- Отказаться от мед. освидетельствования (только для employee_id) -->
-                    <button name="action_refuse_medical_examination"
+                    <!-- Тот же виджет после отметки об отказе: подпись та же,
+                         смысл другой. add_to_history различает их по флагу. -->
+                    <widget name="sign_esp"
+                            string="Подписать отказ с ЭЦП"
+                            highlight="True"
+                            invisible="not button_approve_enabled or state != 'approval_medical_examination' or not user_esp or not medical_assessment_refusal"/>
+
+                    <!-- Отметка об отказе (только для employee_id).
+                         Ничего не подписывает и статус не двигает — отказ
+                         вступает в силу только после подписи ЭЦП. -->
+                    <button name="action_mark_medical_refusal"
                             string="Отказаться от мед. освидетельствования"
                             type="object"
                             class="btn-info"
-                            invisible="not is_employee_signer"
-                            confirm="Вы уверены, что хотите отказаться от прохождения медицинского освидетельствования?"/>
+                            invisible="not is_employee_signer or medical_assessment_refusal"
+                            confirm="Отметить отказ от прохождения медицинского освидетельствования? Он вступит в силу только после подписания ЭЦП."/>
+
+                    <button name="action_cancel_medical_refusal"
+                            string="Отменить отказ"
+                            type="object"
+                            class="btn-secondary"
+                            invisible="not is_employee_signer or not medical_assessment_refusal"/>
 
                     <!-- Обработано (processing) -->
                     <button name="action_approve"

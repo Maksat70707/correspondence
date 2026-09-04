@@ -972,48 +972,44 @@ class OutgoingDocument(models.Model):
         # Стандартное согласование (переход в done)
         return self.action_approve()
     
-    def action_refuse_medical_examination(self):
-        """
-        Отказ сотрудника от прохождения мед. освидетельствования.
-        1. Ставит medical_assessment_refusal = True
-        2. Помечает agreement line как agreed с комментарием
-        3. Проходит на следующий статус (как обычное согласие без ЭЦП)
-        """
+    def _get_medical_refusal_line(self):
+        """Строка согласования сотрудника, ожидающая его действия."""
         self.ensure_one()
-
-        # Находим agreement line сотрудника
+        if not self.is_employee_signer:
+            raise ValidationError(_(
+                "Отказаться может только сотрудник, направляемый на "
+                "освидетельствование."
+            ))
         approver = self.state_agreement_line_ids.filtered(
             lambda l: l.user_id == self.env.user and l.status == 'in_progress'
         )
         if not approver:
             raise ValidationError(_("Вы не являетесь текущим подписантом"))
+        return approver
 
-        # Ставим флаг отказа
+    def action_mark_medical_refusal(self):
+        """
+        Отмечает намерение отказаться от мед. освидетельствования.
+
+        Сам отказ не совершается: статус не двигается, строка согласования
+        остаётся in_progress. Юридическую силу отказ получает только после
+        подписания ЭЦП — штатным виджетом sign_esp, надпись на котором
+        меняется на "Подписать отказ с ЭЦП".
+
+        Отдельный виджет для этого не нужен: строка сотрудника создаётся с
+        need_esp=True, поэтому sign_esp ему и так доступен. Не хватало только
+        способа сообщить серверу, что подпись означает отказ, — им и служит
+        этот флаг.
+        """
+        approver = self._get_medical_refusal_line()
         self.sudo().medical_assessment_refusal = True
+        approver.sudo().commentary = 'Отказ от прохождения мед. освидетельствования'
 
-        # Помечаем как agreed (без ЭЦП)
-        approver.sudo().write({
-            'status': 'agreed',
-            'agreement_date': datetime.now(),
-            'commentary': 'Отказ от прохождения мед. освидетельствования',
-        })
-
-        # Записываем в историю
-        state_description = {
-            sd[0]: sd[1]
-            for sd in self._fields['state']._description_selection(self.env)
-        }
-        self.add_to_history(
-            approver,
-            state_description.get(self.state),
-            status="Отказ от мед. освидетельствования"
-        )
-
-        # Удаляем activity текущего пользователя
-        self._remove_approval_activity(user_id=self.env.uid)
-
-        # Переход через единую логику
-        self._process_post_approval(approver)
+    def action_cancel_medical_refusal(self):
+        """Снимает отметку об отказе, пока он ещё не подписан."""
+        approver = self._get_medical_refusal_line()
+        self.sudo().medical_assessment_refusal = False
+        approver.sudo().commentary = False
 
 
     def get_report_values(self) -> dict:
