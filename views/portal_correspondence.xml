@@ -242,64 +242,82 @@
             </div>
         </t>
         
-        <!-- JavaScript для подписания -->
-        <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-        <script src="/web/static/lib/jquery.blockUI/jquery.blockUI.js"></script>
+        <!-- JavaScript для подписания.
+             jQuery и blockUI намеренно НЕ подключаются: в Odoo 19 каталог
+             /web/static/lib/jquery.blockUI/ удалён и отдаёт 404, поэтому
+             $.blockUI оказывался undefined и обработчик падал на первой же
+             строке, так и не дойдя до NCALayer. Тянуть jQuery с внешнего CDN
+             ради индикатора загрузки на портальной странице тоже незачем. -->
         <script>
             function signCorrespondenceEsp(button) {
                 var documentId = button.getAttribute('data-document-id');
                 var partnerId = button.getAttribute('data-partner-id');
                 var name = button.getAttribute('data-document-name');
-                var model = 'corr.outgoing';
-                var xml = `&lt;data&gt;&lt;model&gt;corr.outgoing&lt;/model&gt;&lt;id&gt;${documentId}&lt;/id&gt;&lt;uid&gt;${partnerId}&lt;/uid&gt;&lt;display_name&gt;${name}&lt;/display_name&gt;&lt;n&gt;${name}&lt;/n&gt;&lt;/data&gt;`
-                
-                $.blockUI({ message: 'Подписание документа...' });
-                
-                if (window.hasOwnProperty('webSocket')) {
-                    if (webSocket.readyState === webSocket.OPEN) {
-                        basicsSign(xml, function (result) {
-                            if (result.status === true &amp;&amp; result.responseObject &amp;&amp; typeof result.responseObject === 'object' &amp;&amp; Object.keys(result.responseObject)) {
-                                fetch('/correspondence/sign/esp/success', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                    },
-                                    body: JSON.stringify({
-                                        document_id: documentId,
-                                        uid: partnerId,
-                                        name: name,
-                                        xml: result.responseObject["result"][0]
-                                    }),
-                                })
-                                .then(response => response.json())
-                                .then(data => {
-                                    if (data.result.status === 200) {
-                                        window.location.href = data.result.redirect_url || "/correspondence/signed/success";
-                                    } else {
-                                        alert(data.result.message);
-                                    }
-                                })
-                                .catch(error => {
-                                    alert("Ошибка при отправке подписи: " + error);
-                                })
-                                .finally(() => {
-                                    $.unblockUI();
-                                });
-                            } else {
-                                alert("Ошибка при подписании. Попробуйте еще раз!");
-                                $.unblockUI();
-                            }
-                        });
-                    } else {
-                        initNcaLayer();
-                        alert("Ошибка при подключении NCALayer. Попробуйте еще раз!");
-                        $.unblockUI();
-                    }
-                } else {
-                    initNcaLayer();
-                    alert("NCALayer не подключен. Установите и запустите NCALayer.");
-                    $.unblockUI();
+                var xml = `&lt;data&gt;&lt;model&gt;corr.outgoing&lt;/model&gt;&lt;id&gt;${documentId}&lt;/id&gt;&lt;uid&gt;${partnerId}&lt;/uid&gt;&lt;display_name&gt;${name}&lt;/display_name&gt;&lt;n&gt;${name}&lt;/n&gt;&lt;/data&gt;`;
+
+                var originalLabel = button.textContent;
+                function setBusy(busy) {
+                    button.disabled = busy;
+                    button.textContent = busy ? 'Подписание документа...' : originalLabel;
                 }
+
+                if (!window.webSocket) {
+                    alert("NCALayer не подключен. Установите и запустите NCALayer, затем обновите страницу.");
+                    if (typeof initNcaLayer === 'function') { initNcaLayer(); }
+                    return;
+                }
+                if (window.webSocket.readyState !== WebSocket.OPEN) {
+                    alert("Соединение с NCALayer не установлено. Убедитесь, что NCALayer запущен, и повторите попытку.");
+                    initNcaLayer();
+                    return;
+                }
+
+                setBusy(true);
+                basicsSign(xml, function (result) {
+                    if (!(result.status === true &amp;&amp; result.responseObject &amp;&amp; typeof result.responseObject === 'object')) {
+                        alert("Ошибка при подписании. Попробуйте еще раз!");
+                        setBusy(false);
+                        return;
+                    }
+                    fetch('/correspondence/sign/esp/success', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            document_id: documentId,
+                            uid: partnerId,
+                            name: name,
+                            xml: result.responseObject["result"][0]
+                        }),
+                    })
+                    .then(function (response) {
+                        // Без этой проверки страница ошибки Odoo (HTML) уходила
+                        // в response.json() и падала невнятным
+                        // "Unexpected token '&lt;'".
+                        if (!response.ok) {
+                            throw new Error('сервер вернул ' + response.status + ' ' + response.statusText);
+                        }
+                        return response.json();
+                    })
+                    .then(function (data) {
+                        if (data.error) {
+                            var err = data.error.data || {};
+                            alert(err.message || data.error.message || 'Ошибка сервера');
+                            setBusy(false);
+                            return;
+                        }
+                        var res = data.result || {};
+                        if (res.status === 200) {
+                            window.location.href = res.redirect_url || "/correspondence/signed/success";
+                        } else {
+                            alert(res.message || 'Не удалось сохранить подпись.');
+                            setBusy(false);
+                        }
+                    })
+                    .catch(function (error) {
+                        alert("Ошибка при отправке подписи: " + (error.message || error));
+                        setBusy(false);
+                    });
+                });
             }
         </script>
         <script src="/appstream_approval/static/src/lib/ncalayer/ncalayer.js"></script>

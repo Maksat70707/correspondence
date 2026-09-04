@@ -114,7 +114,7 @@
                     <button name="action_refuse_medical_examination"
                             string="Отказаться от мед. освидетельствования"
                             type="object"
-                            class="btn-warning"
+                            class="btn-info"
                             invisible="not is_employee_signer"
                             confirm="Вы уверены, что хотите отказаться от прохождения медицинского освидетельствования?"/>
 

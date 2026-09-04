@@ -9,8 +9,9 @@ class IncomingDocument(models.Model):
     _inherit = [
         "mail.thread",
         "mail.activity.mixin",
+        "corr.approval.activity.dedup.mixin",
         "appstream.approval.mixin",
-        "corr.incoming.approve.process.mixin"
+        "corr.incoming.approve.process.mixin",
     ]
     _order = "id desc"
 

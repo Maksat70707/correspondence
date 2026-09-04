@@ -10,6 +10,7 @@ class OutgoingDocument(models.Model):
     _inherit = [
         "mail.thread",
         "mail.activity.mixin",
+        "corr.approval.activity.dedup.mixin",
         "appstream.approval.mixin",
         "corr.outgoing.approve.process.mixin",
         "portal.signing.mixin",
