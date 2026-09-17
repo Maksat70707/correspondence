@@ -85,6 +85,12 @@ class CorrespondenceAssignmentLine(models.Model):
         tracking=True,
     )
 
+    deadline_limit_date = fields.Date(
+        string="Выполнить не позднее",
+        related="incoming_id.deadline_limit_date",
+        readonly=True,
+    )
+
     # Поле для отслеживания необходимости отправки уведомления
     needs_notification = fields.Boolean(
         string="Требуется уведомление",
@@ -103,15 +109,80 @@ class CorrespondenceAssignmentLine(models.Model):
         string="Последний уведомлённый статус",
     )
 
+    @api.model
+    def _limit_deadline(self, deadline, incoming):
+        """Опускает срок до предельной даты письма, если он её превышает."""
+        deadline = fields.Date.to_date(deadline)
+        if not deadline or not incoming:
+            return deadline
+        limit = incoming.deadline_limit_date
+        return limit if limit and deadline > limit else deadline
+
+    def _get_deadline_limit(self):
+        """
+        Предельная дата для этой задачи.
+
+        У новой строки в ещё не сохранённом письме связи с письмом может не
+        быть — тогда считаем от сегодняшнего дня, как это сделает и сам
+        corr.incoming при вычислении своего предела.
+        """
+        self.ensure_one()
+        if self.incoming_id:
+            return self.incoming_id.deadline_limit_date
+        Incoming = self.env["corr.incoming"]
+        return fields.Date.today() + timedelta(
+            days=Incoming._get_assignment_deadline_max_days()
+        )
+
     @api.onchange('resolution_id')
     def _onchange_resolution_id(self):
-        """Устанавливает значения по умолчанию на основе резолюции"""
-        if self.resolution_id:
-            # Устанавливаем срок выполнения
-            if self.resolution_id.days_for_completion:
-                self.deadline = fields.Date.today() + timedelta(days=self.resolution_id.days_for_completion)
-            # Устанавливаем требование отчёта
-            self.report_needed = self.resolution_id.report_needed
+        """
+        Значения по умолчанию из резолюции.
+
+        Резолюция считает срок от сегодняшнего дня, поэтому длинная резолюция
+        на старом письме легко выходит за предел — сразу же и обрезаем.
+        """
+        if not self.resolution_id:
+            return
+        # Устанавливаем срок выполнения
+        if self.resolution_id.days_for_completion:
+            self.deadline = fields.Date.today() + timedelta(days=self.resolution_id.days_for_completion)
+        # Устанавливаем требование отчёта
+        self.report_needed = self.resolution_id.report_needed
+        return self._clamp_deadline_onchange()
+
+    @api.onchange('deadline')
+    def _onchange_deadline(self):
+        """
+        Ограничение срока, выставленного вручную.
+
+        Обязательно отдельным onchange, а не общим с резолюцией. Если держать
+        оба в одном методе, то правка даты вызывает пересчёт из резолюции,
+        который тут же затирает введённое значение, и дата "пружинит" обратно
+        к сроку резолюции. Здесь резолюцию не трогаем: своя дата остаётся
+        любой в пределах допустимой.
+        """
+        return self._clamp_deadline_onchange()
+
+    def _clamp_deadline_onchange(self):
+        """Опускает срок до предельной даты письма и объясняет почему."""
+        limit = self._get_deadline_limit()
+        if not limit or not self.deadline or self.deadline <= limit:
+            return
+        self.deadline = limit
+        return {
+            "warning": {
+                "title": _("Срок выполнения сокращён"),
+                "message": _(
+                    "Задачи по входящему письму должны быть выполнены в "
+                    "течение %(days)s дней с даты его регистрации, поэтому "
+                    "срок установлен на %(limit)s."
+                ) % {
+                    "days": self.env["corr.incoming"]._get_assignment_deadline_max_days(),
+                    "limit": limit.strftime("%d.%m.%Y"),
+                },
+            }
+        }
 
     status = fields.Selection(
         [
@@ -478,6 +549,12 @@ class CorrespondenceAssignmentLine(models.Model):
             if not vals.get("assigner_id"):
                 vals["assigner_id"] = self.env.user.id
 
+            # Onchange отрабатывает только в форме. Мастер доработки, импорт и
+            # вызовы по API идут мимо него, поэтому предел держим и здесь.
+            if vals.get("deadline"):
+                incoming = self.env["corr.incoming"].browse(vals.get("incoming_id"))
+                vals["deadline"] = self._limit_deadline(vals["deadline"], incoming)
+
             # Проверяем делегирование
             original_user_id = vals.get("user_id")
             if original_user_id:
@@ -568,6 +645,12 @@ class CorrespondenceAssignmentLine(models.Model):
         old_user = rec.user_id
         old_status = rec.status
         incoming = rec.incoming_id
+
+        if vals.get("deadline"):
+            target_incoming = incoming
+            if vals.get("incoming_id"):
+                target_incoming = self.env["corr.incoming"].browse(vals["incoming_id"])
+            vals["deadline"] = self._limit_deadline(vals["deadline"], target_incoming)
 
         # Если меняется user_id — проверяем делегирование
         if "user_id" in vals and vals["user_id"] != rec.user_id.id:

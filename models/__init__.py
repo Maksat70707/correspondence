@@ -6,6 +6,7 @@ from . import approval_activity_dedup_mixin
 
 # Расширения моделей appstream_approval
 from . import appstream_approval_workflow
+from . import approval_agreement_line_delegation
 
 # Затем основные модели
 from . import correspondence_incoming

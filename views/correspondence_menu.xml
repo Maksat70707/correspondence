@@ -52,21 +52,37 @@
     <!-- Меню Исходящие                                -->
     <!-- ============================================== -->
 
-    <!-- Меню Исходящие для Employee -->
-    <menuitem id="menu_corr_outgoing_employee"
+    <!-- Раздел общий для всех ролей, различаются пункты внутри.
+         Прежние menu_corr_outgoing_employee и menu_corr_outgoing удалены —
+         Odoo снимет их при обновлении как исчезнувшие из данных. -->
+    <menuitem id="menu_corr_outgoing_root"
               name="Исходящие"
               parent="menu_correspondence_root"
-              action="action_corr_outgoing_employee"
               sequence="20"
-              groups="correspondence.group_correspondence_employee"/>
+              groups="correspondence.group_correspondence_employee,correspondence.group_correspondence_secretary,correspondence.group_correspondence_director,correspondence.group_correspondence_admin">
 
-    <!-- Меню Исходящие для остальных -->
-    <menuitem id="menu_corr_outgoing"
-              name="Исходящие"
-              parent="menu_correspondence_root"
-              action="action_corr_outgoing"
-              sequence="20"
-              groups="correspondence.group_correspondence_secretary,correspondence.group_correspondence_director,correspondence.group_correspondence_admin"/>
+        <menuitem id="menu_corr_outgoing_my"
+                  name="Мои письма"
+                  action="action_corr_outgoing_my"
+                  sequence="10"/>
+
+        <menuitem id="menu_corr_outgoing_department"
+                  name="Моё подразделение"
+                  action="action_corr_outgoing_department"
+                  sequence="20"/>
+
+        <menuitem id="menu_corr_outgoing_assigned"
+                  name="Поручено"
+                  action="action_corr_outgoing_assigned"
+                  sequence="30"/>
+
+        <!-- "Все" — без Employee -->
+        <menuitem id="menu_corr_outgoing_all"
+                  name="Все"
+                  action="action_corr_outgoing_all"
+                  sequence="40"
+                  groups="correspondence.group_correspondence_secretary,correspondence.group_correspondence_director,correspondence.group_correspondence_admin"/>
+    </menuitem>
 
     <!-- ============================================== -->
     <!-- Меню Поручения                               -->

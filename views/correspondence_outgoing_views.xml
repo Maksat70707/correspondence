@@ -146,7 +146,7 @@
                             string="Ознакомлен"
                             type="object"
                             class="btn-primary"
-                            invisible="state != 'review' or not is_initiator"
+                            invisible="state != 'review' or (not acts_for_initiator and not is_current_approver)"
                             confirm="Подтвердить ознакомление?"/>
 
                     <!-- ========================================= -->
@@ -265,13 +265,13 @@
 
                     <!-- Баннер: Ознакомление (для инициатора) -->
                     <div class="alert alert-success" role="alert"
-                         invisible="state != 'review' or not is_initiator">
+                         invisible="state != 'review' or (not acts_for_initiator and not is_current_approver)">
                         <strong>Документ подписан.</strong> Ознакомьтесь с результатом, отправьте исходящее письмо и нажмите "Ознакомлен" для завершения.
                     </div>
 
                     <!-- Баннер: Ожидание ознакомления (для не-инициатора) -->
                     <div class="alert alert-info" role="alert"
-                         invisible="state != 'review' or is_initiator">
+                         invisible="state != 'review' or acts_for_initiator or is_current_approver">
                         <strong>Ознакомление.</strong> Документ ожидает ознакомления и отправки письма инициатором.
                     </div>
 
@@ -316,6 +316,8 @@
                     <field name="user_can_approve" invisible="1"/>
                     <field name="user_esp" invisible="1"/>
                     <field name="is_initiator" invisible="1"/>
+                    <field name="acts_for_initiator" invisible="1"/>
+                    <field name="is_current_approver" invisible="1"/>
                     <field name="can_cancel" invisible="1"/>
                     <field name="is_employee_signer" invisible="1"/>
                     <field name="show_main_attachment" invisible="1"/>
@@ -360,6 +362,7 @@
                     <field name="show_rus_fields" invisible="1"/>
                     <field name="show_kaz_fields" invisible="1"/>
                     <field name="show_employee_fields" invisible="1"/>
+                    <field name="show_general_template" invisible="1"/>
                     <field name="available_medical_worker_ids" invisible="1"/>
 
                     
@@ -427,6 +430,22 @@
                                 <field name="vacation_start_date" invisible="not show_reference or not show_rus_fields" readonly="state != 'draft'"/>
                                 <field name="vacation_end_date" invisible="not show_reference or not show_rus_fields" readonly="state != 'draft'"/>
                             </group>
+
+                            <group> <!-- Шаблонное письмо -->
+                                <field name="where" invisible="not show_general_template" readonly="state != 'draft'"/>
+                                <field name="whom" invisible="not show_general_template" readonly="state != 'draft'"/>
+                                <!-- Казахская половина бланка: свой язык и двуязычный каз/рус -->
+                                <field name="mail_subject_kaz" invisible="not show_general_template or not show_kaz_fields" readonly="state != 'draft'"/>
+                                <field name="summary_kaz" invisible="not show_general_template or not show_kaz_fields" readonly="state != 'draft'"/>
+                                <!-- Русская половина бланка. show_rus_fields здесь не подходит:
+                                     в нём нет bilingual1, а двуязычный бланк русскую
+                                     колонку заполняет. Русский бланк к тому же служит
+                                     запасным для english и bilingual2. -->
+                                <field name="mail_subject_rus" invisible="not show_general_template or language == 'kazakh'" readonly="state != 'draft'"/>
+                                <field name="summary_rus" invisible="not show_general_template or language == 'kazakh'" readonly="state != 'draft'"/>
+                                <field name="contact_phone" invisible="not show_general_template" readonly="state != 'draft'"/>
+                                <field name="contact_email" invisible="not show_general_template" readonly="state != 'draft'"/>
+                            </group>
                         </page>
                         <!-- Вкладка: Получатели письма -->
                         <page string="Получатели письма" name="recipients">
@@ -454,7 +473,9 @@
                                       decoration-muted="status == 'waiting'"
                                       decoration-danger="status == 'rejected'">
                                     <field name="sequence" string="№"/>
+                                    <field name="delegated" column_invisible="1"/>
                                     <field name="user_id"/>
+                                    <field name="original_user_id" string="Вместо" invisible="not delegated"/>
                                     <field name="job_id"/>
                                     <field name="status"/>
                                     <field name="need_esp" string="ЭЦП"/>
@@ -504,6 +525,8 @@
                 <separator/>
                 <filter string="Мои документы" name="my_documents" 
                         domain="[('create_uid', '=', uid)]"/>
+                <filter string="Моё подразделение" name="my_department"
+                        domain="[('is_my_department', '=', True)]"/>
                 <separator/>
                 <filter string="Черновик" name="state_draft" domain="[('state', '=', 'draft')]"/>
                 <filter string="Согласование" name="state_under_approval" domain="[('state', '=', 'under_approval')]"/>
@@ -534,20 +557,9 @@
     <!-- Actions                                        -->
     <!-- ============================================== -->
     
-    <!-- Action для Employee: видит свои + additional_approver + история + текущие согласующие -->
-    <record id="action_corr_outgoing_employee" model="ir.actions.act_window">
-        <field name="name">Исходящая корреспонденция</field>
-        <field name="res_model">corr.outgoing</field>
-        <field name="view_mode">list,kanban,form</field>
-        <field name="domain">['|', '|', '|', ('create_uid', '=', uid), ('additional_approver_ids', 'in', uid), ('state_agreement_history_line_ids.user_id', '=', uid), ('state_agreement_line_ids.user_id', '=', uid)]</field>
-        <field name="help" type="html">
-            <p class="o_view_nocontent_smiling_face">
-                Создайте первый исходящий документ
-            </p>
-        </field>
-    </record>
-
-    <!-- Action для Secretary/Director/Admin: видят все -->
+    <!-- Базовое действие. На меню не вешается: из него через _for_xml_id
+         берутся представления и help, а имя, домен и контекст подставляет
+         corr.outgoing.action_view_outgoing() под конкретный пункт меню. -->
     <record id="action_corr_outgoing" model="ir.actions.act_window">
         <field name="name">Исходящая корреспонденция</field>
         <field name="res_model">corr.outgoing</field>
@@ -557,6 +569,36 @@
                 Создайте первый исходящий документ
             </p>
         </field>
+    </record>
+
+    <!-- Пункты меню. binding_type намеренно не задаём: без binding_model_id
+         он всё равно ничего не делает, а привязка к меню действий тут не нужна. -->
+    <record id="action_corr_outgoing_my" model="ir.actions.server">
+        <field name="name">Мои письма</field>
+        <field name="model_id" ref="model_corr_outgoing"/>
+        <field name="state">code</field>
+        <field name="code">action = model.action_view_outgoing('my')</field>
+    </record>
+
+    <record id="action_corr_outgoing_department" model="ir.actions.server">
+        <field name="name">Моё подразделение</field>
+        <field name="model_id" ref="model_corr_outgoing"/>
+        <field name="state">code</field>
+        <field name="code">action = model.action_view_outgoing('my_department')</field>
+    </record>
+
+    <record id="action_corr_outgoing_assigned" model="ir.actions.server">
+        <field name="name">Поручено</field>
+        <field name="model_id" ref="model_corr_outgoing"/>
+        <field name="state">code</field>
+        <field name="code">action = model.action_view_outgoing('assigned')</field>
+    </record>
+
+    <record id="action_corr_outgoing_all" model="ir.actions.server">
+        <field name="name">Все исходящие</field>
+        <field name="model_id" ref="model_corr_outgoing"/>
+        <field name="state">code</field>
+        <field name="code">action = model.action_view_outgoing('all')</field>
     </record>
 
 </odoo>

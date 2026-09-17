@@ -179,7 +179,7 @@
 
                     <!-- Баннер: Доработка заявки -->
                     <div class="alert alert-warning" role="alert"
-                         invisible="state != 'revision'">>
+                         invisible="state != 'revision'">
                         <strong>Доработка заявки.</strong> Внесите исправления и отправьте повторно на согласование.
                     </div>
 
@@ -236,6 +236,12 @@
                     <notebook>
                         <!-- Вкладка: Задания -->
                         <page string="Задания" name="assignments">
+                            <div class="alert alert-info" role="alert">
+                                Срок выполнения задач по этому письму — не позднее
+                                <field name="deadline_limit_date" readonly="1" nolabel="1"
+                                       class="oe_inline fw-bold"/>.
+                                Более поздняя дата будет автоматически сокращена до этой.
+                            </div>
                             <field name="assignment_line_ids"
                                    readonly="state == 'done'">
                                 <list editable="bottom"
@@ -259,15 +265,38 @@
                                 </list>
                             </field>
                         </page>
+                        <!-- Вкладка: Корреспонденты -->
+                        <page string="Корреспонденты" name="correspondents">
+                            <field name="show_col_full_name" invisible="1"/>
+                            <field name="show_col_address" invisible="1"/>
+                            <field name="show_col_position" invisible="1"/>
+                            <field name="show_col_email" invisible="1"/>
+                            <field name="show_col_phone" invisible="1"/>
+
+                            <field name="correspondent_line_ids" nolabel="1" colspan="2"
+                                readonly="state not in ['draft', 'revision']">
+                                <list editable="bottom">
+                                    <field name="name" width="200px"/>
+                                    <field name="shipment_method_ids" widget="many2many_tags" options="{'no_create': True}" width="250px"/>
+                                    <field name="full_name" width="180px" column_invisible="not parent.show_col_full_name"/>
+                                    <field name="address" width="200px" column_invisible="not parent.show_col_address"/>
+                                    <field name="position" width="150px" column_invisible="not parent.show_col_position"/>
+                                    <field name="email" width="180px" column_invisible="not parent.show_col_email"/>
+                                    <field name="phone" width="150px" column_invisible="not parent.show_col_phone"/>
+                                </list>
+                            </field>
+                        </page>
                         <!-- Вкладка: Текущие согласующие -->
                         <page string="Согласующие" name="approvers"
-                              invisible="state not in ['review']">>
+                              invisible="state not in ['review']">
                             <field name="state_agreement_line_ids" readonly="1">
                                 <list decoration-success="status == 'agreed'"
                                       decoration-warning="status == 'in_progress'"
                                       decoration-muted="status == 'waiting'">
                                     <field name="sequence" string="№"/>
+                                    <field name="delegated" column_invisible="1"/>
                                     <field name="user_id"/>
+                                    <field name="original_user_id" string="Вместо" invisible="not delegated"/>
                                     <field name="job_id"/>
                                     <field name="status"/>
                                     <field name="agreement_date"/>

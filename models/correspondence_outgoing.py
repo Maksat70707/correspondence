@@ -395,6 +395,31 @@ class OutgoingDocument(models.Model):
     state_agreement_line_ids = fields.One2many(tracking=False)
     state_agreement_history_line_ids = fields.One2many(tracking=False)
 
+    # Шаблонное письмо для печати
+
+    where = fields.Char(
+        string="Куда",
+    )
+
+    whom = fields.Char(
+        string="Кому",
+    )
+
+    mail_subject_rus = fields.Char(
+        string="Тема письма рус",
+    )
+
+    mail_subject_kaz = fields.Char(
+        string="Тема письма каз",
+    )
+
+    summary_rus = fields.Text(
+        string="Тело письма рус",
+    )
+    summary_kaz = fields.Text(
+        string="Тело письма каз",
+    )
+
     # ---------------------------------------------------------
     # Computed поля
     # ---------------------------------------------------------
@@ -409,6 +434,16 @@ class OutgoingDocument(models.Model):
         compute="_compute_is_initiator",
     )
 
+    acts_for_initiator = fields.Boolean(
+        string="Действует за инициатора",
+        compute="_compute_acts_for_initiator",
+    )
+
+    is_current_approver = fields.Boolean(
+        string="Текущий согласующий",
+        compute="_compute_is_current_approver",
+    )
+
     can_cancel = fields.Boolean(
         string="Может отменить",
         compute="_compute_can_cancel",
@@ -417,6 +452,17 @@ class OutgoingDocument(models.Model):
     is_employee_signer = fields.Boolean(
         string="Сотрудник-подписант",
         compute="_compute_is_employee_signer",
+    )
+
+    # "Письмо моего подразделения" — свойство не письма, а того, кто смотрит,
+    # поэтому поле вычисляемое и не хранится. Метод search разворачивает его в
+    # create_uid IN (...), благодаря чему одним и тем же признаком пользуются и
+    # фильтр в поисковой панели, и, при необходимости, правило доступа.
+    # Само меню строит домен напрямую через _my_department_user_ids().
+    is_my_department = fields.Boolean(
+        string="Письмо моего подразделения",
+        compute="_compute_is_my_department",
+        search="_search_is_my_department",
     )
 
     is_vahta = fields.Boolean(
@@ -462,6 +508,9 @@ class OutgoingDocument(models.Model):
     )
     show_employee_fields = fields.Boolean(
         compute="_compute_show_employee_fields",
+    )
+    show_general_template  = fields.Boolean(
+        compute="_compute_show_general_template",
     )
     @api.depends("follow_up_outgoing_ids")
     def _compute_follow_up_outgoing_count(self):
@@ -533,7 +582,13 @@ class OutgoingDocument(models.Model):
     @api.depends('type_id', 'language')
     def _compute_has_report(self):
         for rec in self:
-            rec.has_report = bool(rec._get_report_by_type('pdf'))            
+            rec.has_report = bool(rec._get_report_by_type('pdf'))
+    @api.depends('type_id', 'language')
+    def _compute_show_general_template(self):
+        """Проверяет, нужно ли показывать шаблонное письмо для печати"""
+        general_template_type = self.env.ref('correspondence.general_template', raise_if_not_found=False)
+        for rec in self:
+            rec.show_general_template = (rec.type_id == general_template_type)
     @api.depends('show_simple', 'show_guarantee', 'show_change_conditions')
     def _compute_show_main_attachment(self):
         """Проверяет, нужно ли показывать поле с основным вложением для подписания"""
@@ -609,12 +664,85 @@ class OutgoingDocument(models.Model):
         for rec in self:
             rec.is_initiator = rec.create_uid == self.env.user
 
+    @api.model
+    def _my_department_user_ids(self):
+        """
+        Пользователи моего подразделения, включая меня самого.
+
+        sudo(): рядовой сотрудник не читает hr.employee целиком, ему доступна
+        только hr.employee.public, а member_ids ведёт на hr.employee.
+        Без карточки сотрудника или без подразделения остаёмся при себе —
+        отбор просто сузится до своих писем.
+        """
+        employee = self.env.user.employee_id
+        department = employee.department_id if employee else False
+        if not department:
+            return self.env.user.ids
+        users = department.sudo().member_ids.user_id
+        return (users | self.env.user).ids
+
     @api.depends_context("uid")
-    @api.depends("state", "is_initiator")
-    def _compute_can_cancel(self):
-        """Проверяет, может ли инициатор отменить документ"""
+    @api.depends("create_uid")
+    def _compute_is_my_department(self):
+        department_user_ids = self._my_department_user_ids()
         for rec in self:
-            rec.can_cancel = rec.is_initiator and rec.state in ('draft', 'under_approval', 'approval', 'approval_medical_examination')
+            rec.is_my_department = rec.create_uid.id in department_user_ids
+
+    def _search_is_my_department(self, operator, value):
+        if operator not in ("=", "!="):
+            raise UserError(_("Неподдерживаемый оператор для этого фильтра."))
+        positive = (operator == "=") == bool(value)
+        department_user_ids = self._my_department_user_ids()
+        return [("create_uid", "in" if positive else "not in", department_user_ids)]
+
+    @api.depends_context("uid")
+    @api.depends("create_uid")
+    def _compute_acts_for_initiator(self):
+        """
+        Инициатор или его действующий заместитель.
+
+        Нужно там, где право принадлежит именно автору документа: отозвать
+        своё письмо, ознакомиться с результатом. Если инициатор в отпуске,
+        эти действия должен мочь сделать тот, кто его замещает.
+        """
+        Line = self.env["appstream.approval.agreement.line"]
+        for rec in self:
+            if rec.create_uid == self.env.user:
+                rec.acts_for_initiator = True
+            else:
+                rec.acts_for_initiator = (
+                    Line._corr_find_delegate(rec.create_uid) == self.env.user
+                )
+
+    @api.depends_context("uid")
+    @api.depends("state_agreement_line_ids", "state_agreement_line_ids.status",
+                 "state_agreement_line_ids.user_id")
+    def _compute_is_current_approver(self):
+        """
+        У текущего пользователя есть строка согласования "В процессе".
+
+        После передачи строки заместителю (см.
+        approval_agreement_line_delegation) владельцем становится он, поэтому
+        отдельной проверки делегации здесь не нужно.
+        """
+        for rec in self:
+            rec.is_current_approver = bool(rec.state_agreement_line_ids.filtered(
+                lambda l: l.user_id == self.env.user and l.status == 'in_progress'
+            ))
+
+    @api.depends_context("uid")
+    @api.depends("state", "acts_for_initiator")
+    def _compute_can_cancel(self):
+        """
+        Кто может отозвать документ.
+
+        Намеренно НЕ is_current_approver: на Согласовании и Утверждении
+        текущий согласующий — это начальник или утверждающий, и отзывать
+        чужое письмо они не должны. Для них есть "Отклонить" и "Вернуть на
+        доработку". Отзыв остаётся правом автора и того, кто его замещает.
+        """
+        for rec in self:
+            rec.can_cancel = rec.acts_for_initiator and rec.state in ('draft', 'under_approval', 'approval', 'approval_medical_examination')
 
     @api.depends_context("uid")
     @api.depends("state", "employee_id", "state_agreement_line_ids")
@@ -854,6 +982,54 @@ class OutgoingDocument(models.Model):
     # ---------------------------------------------------------
     # Действия (кнопки)
     # ---------------------------------------------------------
+    @api.model
+    def action_view_outgoing(self, scope="my"):
+        """
+        Список исходящих для одного из пунктов меню.
+
+        Домены собираются здесь, а не в XML, потому что домен
+        ir.actions.act_window вычисляется в урезанном контексте: там есть uid,
+        но нет объекта user, а "моё подразделение" одним uid не задать. Заодно
+        все области видимости лежат в одном месте — добавить новую значит
+        дописать ветку, а не заводить очередное действие с доменом в XML.
+        """
+        action = self.env["ir.actions.actions"]._for_xml_id(
+            "correspondence.action_corr_outgoing"
+        )
+        uid = self.env.uid
+
+        if scope == "my":
+            action["name"] = _("Мои письма")
+            action["domain"] = [("create_uid", "=", uid)]
+
+        elif scope == "my_department":
+            action["name"] = _("Моё подразделение")
+            action["domain"] = [
+                ("create_uid", "in", self._my_department_user_ids())
+            ]
+            # Чужие письма отдела открываются только на чтение, создавать
+            # отсюда нечего — новое письмо заводится в "Моих письмах".
+            action["context"] = {"create": False}
+
+        elif scope == "assigned":
+            action["name"] = _("Поручено")
+            action["domain"] = [
+                "|", "|",
+                ("additional_approver_ids", "in", uid),
+                ("state_agreement_line_ids.user_id", "=", uid),
+                ("state_agreement_history_line_ids.user_id", "=", uid),
+            ]
+            action["context"] = {"create": False}
+
+        elif scope == "all":
+            action["name"] = _("Все исходящие")
+            action["domain"] = []
+
+        else:
+            raise UserError(_("Неизвестная область видимости: %s") % scope)
+
+        return action
+
     def action_view_follow_up_outgoing(self):
         """
         Открывает список follow-up исходящих этого письма.
@@ -945,8 +1121,8 @@ class OutgoingDocument(models.Model):
         if self.state not in ('draft', 'under_approval', 'approval', 'approval_medical_examination'):
             raise UserError(_("Отменить можно только из Черновика, Согласования или Утверждения."))
 
-        if not self.is_initiator:
-            raise UserError(_("Отменить документ может только инициатор."))
+        if not self.acts_for_initiator:
+            raise UserError(_("Отменить документ может только инициатор или его заместитель."))
 
         # Очищаем согласующих и activity (sudo: unlink=0 у секретаря)
         self.sudo().state_agreement_line_ids.unlink()
@@ -961,13 +1137,22 @@ class OutgoingDocument(models.Model):
         )
 
     def action_acknowledge(self):
-        """Ознакомиться и закрыть (из review, только для инициатора)"""
+        """
+        Ознакомиться и закрыть (из review).
+
+        Строка на Ознакомлении создаётся на инициатора, но могла уйти
+        заместителю по делегации — тогда ознакомиться должен он. Поэтому
+        пускаем и того, у кого строка "В процессе".
+        """
         self.ensure_one()
         if self.state != 'review':
             raise UserError(_("Ознакомиться можно только на этапе Ознакомления."))
 
-        if not self.is_initiator:
-            raise UserError(_("Ознакомиться с документом может только инициатор."))
+        if not (self.acts_for_initiator or self.is_current_approver):
+            raise UserError(_(
+                "Ознакомиться с документом может только инициатор, его "
+                "заместитель или текущий согласующий."
+            ))
 
         # Стандартное согласование (переход в done)
         return self.action_approve()
@@ -1051,6 +1236,69 @@ class OutgoingDocument(models.Model):
 
         return values
 
+    def prepare_general_template_report_values(self):
+        """Подготовка значений для отчёта «Шаблонное письмо».
+
+        Бланк заполняется целиком из полей формы. Подписывает только
+        Утверждающий сотрудник (esp_signer).
+        """
+        self.ensure_one()
+        values = self.get_report_values()
+
+        signed_lines = self.state_agreement_history_line_ids.filtered(lambda l: l.signed)
+        signer_signed = signed_lines.filtered(lambda l: l.user_id == self.esp_signer_id)[:1]
+
+        ordered_ids = [signer_signed.id] if signer_signed else []
+        ordered_signed = self.env['appstream.approval.agreement.history.line'].browse(ordered_ids)
+
+        signer_qr_insert = []
+        signer_sign_date = ''
+        signer_name = ''
+        signer_job_rus = ''
+        signer_job_kaz = ''
+        if signer_signed:
+            signer_employee = signer_signed.user_id.employee_id
+            signer_job = signer_employee.job_id if signer_employee else None
+            signer_name = signer_employee.name if signer_employee else ''
+            signer_job_rus = signer_job.with_context(lang='ru_RU').name if signer_job else ''
+            signer_job_kaz = signer_job.with_context(lang='kk_KZ').name if signer_job else ''
+            signer_sign_date = signer_signed.agreement_date.strftime('%d.%m.%Y') if signer_signed.agreement_date else ''
+            if signer_signed.qr:
+                signer_qr_insert = [{"img": signer_signed.qr, "w": 20, "h": 20}]
+
+        # Дата в шапке бланка — дата регистрации письма, то есть дата подписи
+        # утверждающего: номер присваивается в тот же момент. Пока письмо не
+        # подписано, показываем дату создания.
+        letter_date = signer_sign_date or (
+            self.create_date.strftime('%d.%m.%Y') if self.create_date else ''
+        )
+
+        values.update({
+            'where': self.where or '',
+            'whom': self.whom or '',
+            'mail_subject_kaz': self.mail_subject_kaz or '',
+            'mail_subject_rus': self.mail_subject_rus or '',
+            'summary_kaz': self.summary_kaz or '',
+            'summary_rus': self.summary_rus or '',
+            'date': letter_date,
+            # В бланке {{create_uid}} — строка "исполнитель", нужно имя, а не recordset
+            'create_uid': self.create_uid.name or '',
+            'contact_phone': self.contact_phone or '',
+            'contact_email': self.contact_email or '',
+
+            'signer': signer_name,
+            'signer_job_rus': signer_job_rus,
+            'signer_job_kaz': signer_job_kaz,
+            'sign_date': signer_sign_date,
+            'qr__insert': signer_qr_insert,
+
+            'state_agreement_lines': ordered_signed,
+            'images__insert': [
+                {"img": record.qr, "w": 35, "h": 35}
+                for record in ordered_signed if record.qr
+            ],
+        })
+        return values
 
     def prepare_medical_checkup_report_values(self):
         """Подготавливает данные для DOCX отчёта Направление на медицинское осмотр"""
@@ -1523,6 +1771,18 @@ class OutgoingDocument(models.Model):
                 'pdf': 'correspondence.correspondence_reference_letter_eng_pdf',
                 'docx': 'correspondence.correspondence_reference_letter_eng_docx',
             },
+            'correspondence.general_template': {
+                'pdf': 'correspondence.correspondence_general_template_pdf',
+                'docx': 'correspondence.correspondence_general_template_docx',
+            },
+            'correspondence.general_template_kaz': {
+                'pdf': 'correspondence.correspondence_general_template_kaz_pdf',
+                'docx': 'correspondence.correspondence_general_template_kaz_docx',
+            },
+            'correspondence.general_template_rus': {
+                'pdf': 'correspondence.correspondence_general_template_rus_pdf',
+                'docx': 'correspondence.correspondence_general_template_rus_docx',
+            },
         }
 
         # Получаем xmlid типа письма
@@ -1545,6 +1805,15 @@ class OutgoingDocument(models.Model):
         # Ищем отчёт по типу
         if type_xmlid and type_xmlid in type_to_report:
             return type_to_report[type_xmlid].get(output_format)
+
+        # Для general_template: двуязычный бланк только для каз+рус,
+        # казахский — для kazakh, во всех остальных случаях русский
+        # (английского бланка пока нет).
+        if type_xmlid == 'correspondence.general_template':
+            if self.language == 'kazakh':
+                type_xmlid = 'correspondence.general_template_kaz'
+            elif self.language != 'bilingual1':
+                type_xmlid = 'correspondence.general_template_rus'
 
         # Возвращаем дефолтный отчёт
         return None

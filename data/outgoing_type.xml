@@ -7,4 +7,5 @@
     <record id="job_offer" model="correspondence.outgoing.type"><field name="name">Предложение о работе</field></record>
     <record id="reference" model="correspondence.outgoing.type"><field name="name">Справка с места работы</field></record>
     <record id="guarantee" model="correspondence.outgoing.type"><field name="name">Гарантийное письмо</field></record>
+    <record id="general_template" model="correspondence.outgoing.type"><field name="name">Шаблонное письмо</field></record>
 </odoo>

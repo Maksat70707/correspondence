@@ -288,4 +288,121 @@
         <field name="attachment_use">True</field>
         <field name="binding_model_id" ref="model_corr_outgoing"/>
     </record>        
+
+    <!-- ============================================================
+         Шаблонное письмо (general_template)
+         Бланк выбирается по языку письма — см. _get_report_by_type:
+           bilingual1 (каз+рус) -> general_template_kaz_rus.docx
+           kazakh               -> general_template_kaz.docx
+           остальные            -> general_template_rus.docx
+         ============================================================ -->
+
+    <!-- Шаблонное письмо, двуязычный бланк - DOCX -->
+    <record id="correspondence_general_template_docx" model="ir.actions.report">
+        <field name="name">Шаблонное письмо каз/рус (DOCX)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">docx</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/general_template_kaz_rus.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_general_template_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_general_template_docx</field>
+        <field name="print_report_name">'Письмо - %s' % object.name</field>
+        <field name="attachment">'Письмо - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Шаблонное письмо, двуязычный бланк - PDF -->
+    <record id="correspondence_general_template_pdf" model="ir.actions.report">
+        <field name="name">Шаблонное письмо каз/рус (PDF)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">pdf</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/general_template_kaz_rus.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_general_template_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_general_template_pdf</field>
+        <field name="print_report_name">'Письмо - %s' % object.name</field>
+        <field name="attachment">'Письмо - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Шаблонное письмо, казахский бланк - DOCX -->
+    <record id="correspondence_general_template_kaz_docx" model="ir.actions.report">
+        <field name="name">Шаблонное письмо каз (DOCX)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">docx</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/general_template_kaz.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_general_template_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_general_template_kaz_docx</field>
+        <field name="print_report_name">'Письмо - %s' % object.name</field>
+        <field name="attachment">'Письмо - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Шаблонное письмо, казахский бланк - PDF -->
+    <record id="correspondence_general_template_kaz_pdf" model="ir.actions.report">
+        <field name="name">Шаблонное письмо каз (PDF)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">pdf</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/general_template_kaz.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_general_template_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_general_template_kaz_pdf</field>
+        <field name="print_report_name">'Письмо - %s' % object.name</field>
+        <field name="attachment">'Письмо - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Шаблонное письмо, русский бланк - DOCX -->
+    <record id="correspondence_general_template_rus_docx" model="ir.actions.report">
+        <field name="name">Шаблонное письмо рус (DOCX)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">docx</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/general_template_rus.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_general_template_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_general_template_rus_docx</field>
+        <field name="print_report_name">'Письмо - %s' % object.name</field>
+        <field name="attachment">'Письмо - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
+    <!-- Шаблонное письмо, русский бланк - PDF -->
+    <record id="correspondence_general_template_rus_pdf" model="ir.actions.report">
+        <field name="name">Шаблонное письмо рус (PDF)</field>
+        <field name="model">corr.outgoing</field>
+        <field name="report_type">docx</field>
+        <field name="out_report_type">pdf</field>
+        <field name="template_docx" type="base64"
+               file="correspondence/static/templates/general_template_rus.docx"/>
+        <field name="python_function_prepare">true</field>
+        <field name="python_function_name">prepare_general_template_report_values</field>
+        <field name="binding_type">report</field>
+        <field name="report_name">correspondence_general_template_rus_pdf</field>
+        <field name="print_report_name">'Письмо - %s' % object.name</field>
+        <field name="attachment">'Письмо - %s' % object.name</field>
+        <field name="attachment_use">True</field>
+        <field name="binding_model_id" ref="model_corr_outgoing"/>
+    </record>
+
 </odoo>

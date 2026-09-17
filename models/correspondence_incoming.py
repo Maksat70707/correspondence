@@ -1,6 +1,7 @@
 from odoo import api, fields, models, _, _lt
 from odoo.exceptions import AccessError, UserError, ValidationError
 from markupsafe import Markup
+from datetime import timedelta
 
 
 class IncomingDocument(models.Model):
@@ -14,6 +15,38 @@ class IncomingDocument(models.Model):
         "corr.incoming.approve.process.mixin",
     ]
     _order = "id desc"
+
+    # Предельный срок выполнения задач.
+    #
+    # Поле намеренно НЕ хранится: это чистая функция от create_date, которая
+    # после создания письма уже не меняется, а вычисление — одно сложение без
+    # единого запроса. Хранить выгоды нет (1500 писем в год — это несколько
+    # килобайт), зато появляется вред: правило "30 дней" задаётся политикой и
+    # рано или поздно станет 45 или "рабочими днями". У хранимого поля это
+    # превращается в устаревшие данные по всем записям и миграцию; у
+    # вычисляемого меняется одна строка. Искать и сортировать по этой дате
+    # тоже незачем — тот же отбор выражается через create_date со сдвигом.
+    deadline_limit_date = fields.Date(
+        string="Задачи выполнить до",
+        compute="_compute_deadline_limit_date",
+        help="Срок выполнения задач по письму не может быть позже этой даты.",
+    )
+
+    @api.model
+    def _get_assignment_deadline_max_days(self):
+        """Сколько дней от регистрации письма даётся на выполнение задач."""
+        return int(self.env["ir.config_parameter"].sudo().get_param(
+            "correspondence.assignment_deadline_max_days", 30
+        ))
+
+    @api.depends("create_date")
+    def _compute_deadline_limit_date(self):
+        max_days = self._get_assignment_deadline_max_days()
+        today = fields.Date.today()
+        for rec in self:
+            # У ещё не сохранённой записи create_date нет — считаем от сегодня.
+            base = fields.Date.to_date(rec.create_date) or today
+            rec.deadline_limit_date = base + timedelta(days=max_days)
 
     name = fields.Char(
         string="Номер входящего документа",
