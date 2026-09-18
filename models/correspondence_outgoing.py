@@ -29,6 +29,12 @@ class OutgoingDocument(models.Model):
         tracking=True,
     )
 
+    active = fields.Boolean(
+        string="Активен",
+        default=True,
+        help="Снятый флаг убирает документ из списков; запись не удаляется.",
+    )
+
     subject = fields.Char(
         string="Тема",
         required=True,
@@ -459,6 +465,15 @@ class OutgoingDocument(models.Model):
     # create_uid IN (...), благодаря чему одним и тем же признаком пользуются и
     # фильтр в поисковой панели, и, при необходимости, правило доступа.
     # Само меню строит домен напрямую через _my_department_user_ids().
+    # Текущие согласующие для колонки в списке. Many2one на res.users, а не на
+    # строки согласования: тег тогда показывает имя пользователя напрямую, без
+    # оглядки на _rec_name строки.
+    current_approver_ids = fields.Many2many(
+        "res.users",
+        string="Текущие согласующие",
+        compute="_compute_current_approver_ids",
+    )
+
     is_my_department = fields.Boolean(
         string="Письмо моего подразделения",
         compute="_compute_is_my_department",
@@ -664,6 +679,16 @@ class OutgoingDocument(models.Model):
         for rec in self:
             rec.is_initiator = rec.create_uid == self.env.user
 
+    @api.depends("state_agreement_line_ids.status", "state_agreement_line_ids.user_id")
+    def _compute_current_approver_ids(self):
+        # sudo(): в списке "Моё подразделение" чужие письма открыты на чтение,
+        # но строки согласования могут быть закрыты своим правилом доступа —
+        # без sudo колонка у чужих писем молча опустела бы.
+        for rec in self:
+            rec.current_approver_ids = rec.sudo().state_agreement_line_ids.filtered(
+                lambda l: l.status == "in_progress"
+            ).user_id
+
     @api.model
     def _my_department_user_ids(self):
         """
@@ -784,6 +809,20 @@ class OutgoingDocument(models.Model):
             rec.available_medical_worker_ids = partners
             
 
+
+    # Статусы, из которых документ можно убрать в архив. Остальные — это
+    # документ в работе: заархивированный, он исчезнет из списков согласующих,
+    # но останется висеть в их активностях, и маршрут встанет.
+    ARCHIVABLE_STATES = ('draft', 'done', 'rejected', 'canceled')
+
+    @api.constrains('active')
+    def _check_archivable_state(self):
+        for rec in self:
+            if not rec.active and rec.state not in self.ARCHIVABLE_STATES:
+                raise ValidationError(_(
+                    "Документ «%(name)s» находится в работе и не может быть "
+                    "заархивирован. Сначала завершите или отмените его."
+                ) % {"name": rec.display_name})
 
     @api.constrains('attachment_to_sign_ids')
     def _check_single_attachment_to_sign(self):
@@ -939,6 +978,35 @@ class OutgoingDocument(models.Model):
         # appstream_approval/wizard/approval_reject_wizard.py:action_reject
         # до вызова record.action_reject() -> _on_reject.
         # Верно и для v3, и для v4.
+
+    def _action_return(self, state, reason):
+        """
+        Возврат на доработку, доступный ещё и инициатору.
+
+        Фреймворк первым делом делает self.filtered("button_approve_enabled"),
+        то есть вернуть документ может только текущий согласующий. Инициатору
+        кнопку показать мало — запись отфильтровалась бы и нажатие молча
+        ничего не сделало.
+
+        Записи согласующих отдаём фреймворку как есть, свои разбираем сами,
+        повторяя его же последовательность действий.
+        """
+        action = super()._action_return(state, reason)
+
+        by_approver = self.filtered("button_approve_enabled")
+        by_initiator = (self - by_approver).filtered(
+            lambda r: r.acts_for_initiator
+            and r.state in ('under_approval', 'approval', 'approval_medical_examination')
+        )
+        for record in by_initiator:
+            old_state = record.state
+            record._remove_approval_activity(action="return", reason=reason)
+            record.with_context(reject_reason=reason).write({"state": state})
+            record.env.invalidate_all()
+            record._on_return(new_state=state, old_state=old_state, reason=reason)
+            record._schedule_approval_activity()
+
+        return action
 
     def _on_return(self, new_state=None, old_state=None, reason=None):
         """При возврате документа на доработку"""

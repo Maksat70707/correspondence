@@ -8,11 +8,17 @@
         <field name="name">corr.outgoing.tree</field>
         <field name="model">corr.outgoing</field>
         <field name="arch" type="xml">
-            <list create="true" delete="false">
+            <!-- delete намеренно НЕ задан: _postprocess_access_rights в
+                 ir.ui.view сам проставит delete="False" тем, у кого нет права
+                 unlink, но только если атрибут в arch отсутствует. Явное
+                 delete="1" отключило бы эту проверку и показало пункт всем. -->
+            <list create="true">
                 <field name="name"/>
                 <field name="subject"/>
                 <field name="create_uid" string="Инициатор"/>
                 <field name="create_date" string="Дата создания"/>
+                <field name="current_approver_ids" widget="many2many_tags"
+                       string="Текущие согласующие"/>
                 <field name="state" widget="badge" 
                        decoration-info="state == 'draft'" 
                        decoration-warning="state in ('under_approval', 'approval', 'approval_medical_examination', 'processing')"
@@ -91,12 +97,11 @@
                     <!-- ========================================= -->
                     
                     <!-- Согласовать (under_approval, без ЭЦП) -->
-                    <button name="action_approve"
+                    <button name="action_approve_wizard"
                             string="Согласовать"
                             type="object"
                             class="btn-primary"
-                            invisible="not button_approve_enabled or state != 'under_approval' or user_esp"
-                            confirm="Подтвердить согласование?"/>
+                            invisible="not button_approve_enabled or state != 'under_approval' or user_esp"/>
 
                     <!-- Утвердить с ЭЦП (approval) - виджет для NCALayer -->
                     <widget name="sign_esp"
@@ -158,7 +163,7 @@
                             string="Вернуть на доработку"
                             type="object"
                             class="btn-warning"
-                            invisible="not button_return_enabled or state not in ['under_approval', 'approval', 'approval_medical_examination']"
+                            invisible="(not button_return_enabled and not acts_for_initiator) or state not in ['under_approval', 'approval', 'approval_medical_examination']"
                             context="{'fixed_return_state': 'draft'}"/>
 
                     <!-- Отклонить (under_approval, approval, approval_medical_examination) - для согласующих, кроме employee -->
@@ -536,6 +541,9 @@
                 <filter string="Закрыто" name="state_done" domain="[('state', '=', 'done')]"/>
                 <filter string="Отклонено" name="state_rejected" domain="[('state', '=', 'rejected')]"/>
                 <filter string="Отменено" name="state_canceled" domain="[('state', '=', 'canceled')]"/>
+                <separator/>
+                <separator/>
+                <filter string="Архивные" name="inactive" domain="[('active', '=', False)]"/>
                 <separator/>
                 <filter string="Статус" name="group_state" context="{'group_by': 'state'}"/>
                 <filter string="Инициатор" name="group_initiator" context="{'group_by': 'create_uid'}"/>
