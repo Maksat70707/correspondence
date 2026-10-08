@@ -1,8 +1,11 @@
 import base64
+import logging
 from odoo import api, fields, models, _
 from odoo.exceptions import AccessError, UserError, ValidationError
 from datetime import datetime
 from markupsafe import Markup
+
+_logger = logging.getLogger(__name__)
 
 class OutgoingDocument(models.Model):
     _name = "corr.outgoing"
@@ -847,12 +850,12 @@ class OutgoingDocument(models.Model):
     def write(self, vals):
         res = super().write(vals)
 
-        # Номер здесь НЕ присваивается. Единственный триггер — ЭЦП-подпись
-        # на Утверждении (см. _assign_document_number и вызов из
-        # corr_outgoing_approve_process_mixin.add_to_history).
+        # Номер здесь НЕ присваивается. Триггеры — подписание ЭЦП:
+        # _esp_extra_documents (перед рендером печатной формы),
+        # _esp_after_signature и add_to_history. Все три идемпотентны.
         #
         # Раньше здесь стоял `if vals.get('state') == 'processing'`. Это давало
-        # два бага: (1) номера ещё нет в момент вшивания штампа в файл;
+        # два бага: (1) номера ещё нет к моменту, когда он нужен на документе;
         # (2) любой транзитный write состояния 'processing' — а _action_approve
         # выставляет state ДО выполнения before/after_script — сжигал номер
         # раньше времени.
@@ -1876,18 +1879,23 @@ class OutgoingDocument(models.Model):
         if type_xmlid == 'correspondence.reference' and self.language == 'bilingual2':
             type_xmlid = 'correspondence.reference_eng'
 
-        # Ищем отчёт по типу
-        if type_xmlid and type_xmlid in type_to_report:
-            return type_to_report[type_xmlid].get(output_format)
-
         # Для general_template: двуязычный бланк только для каз+рус,
         # казахский — для kazakh, во всех остальных случаях русский
         # (английского бланка пока нет).
+        #
+        # Проверка должна стоять ВЫШЕ поиска по type_to_report: ключ
+        # 'correspondence.general_template' в словаре есть, поэтому раньше
+        # метод возвращал двуязычный бланк, не доходя до выбора по языку,
+        # и ветка ниже не срабатывала никогда.
         if type_xmlid == 'correspondence.general_template':
             if self.language == 'kazakh':
                 type_xmlid = 'correspondence.general_template_kaz'
             elif self.language != 'bilingual1':
                 type_xmlid = 'correspondence.general_template_rus'
+
+        # Ищем отчёт по типу
+        if type_xmlid and type_xmlid in type_to_report:
+            return type_to_report[type_xmlid].get(output_format)
 
         # Возвращаем дефолтный отчёт
         return None
@@ -1941,6 +1949,75 @@ class OutgoingDocument(models.Model):
             return self.medical_worker_id
 
         return self.env['res.partner']
+
+    # ---------------------------------------------------------
+    # Подпись ЭЦП: что подписывается и что печатается на копии
+    # ---------------------------------------------------------
+
+    def _esp_has_printed_form(self):
+        """Письмо формируется печатной формой (направления, объяснительная,
+        приглашение на работу, справка): подписывается она, а не файл
+        «Исходящее письмо для подписания»."""
+        return any(getattr(self, check)() for check in (
+            '_is_explanation_type', '_is_medical_examination_type',
+            '_is_medical_checkup_type', '_is_job_offer_type', '_is_reference_type',
+        ) if hasattr(self, check))
+
+    def _esp_document_fields(self, line=None):
+        """У писем с печатной формой загруженный файл письма не подписывается:
+        подписывается сформированный отчёт. Дополнительные документы
+        подписываются всегда."""
+        names = super()._esp_document_fields(line)
+        if self._esp_has_printed_form():
+            names = [name for name in names if name != 'attachment_to_sign_ids']
+        return names
+
+    def _esp_extra_documents(self):
+        """Печатная форма письма (PDF, а если PDF не собрался — DOCX) —
+        документ на подпись вместе с дополнительными файлами. Её видят до
+        подписи и сотрудники, и медработник на портале."""
+        documents = super()._esp_extra_documents()
+        if not self._esp_has_printed_form():
+            return documents
+        # Номер присваиваем ДО рендера. Во всех шаблонах есть {{ name }}, а
+        # документ замораживается первой подписью — присвоить номер только
+        # в _esp_after_signature значило бы подписать письмо с «---» в
+        # номере. Метод идемпотентен, так что повторные открытия окна
+        # подписи последовательность не расходуют.
+        self._assign_document_number()
+        for output_format in ('pdf', 'docx'):
+            xmlid = self._get_report_by_type(output_format)
+            report = xmlid and self.env.ref(xmlid, raise_if_not_found=False)
+            if not report:
+                continue
+            try:
+                content, extension = report.render_docx(xmlid, [self.id], data={})
+            except Exception:
+                _logger.exception("Печатная форма %s не сформирована в %s",
+                                  self.id, output_format)
+                continue
+            name = (self.display_name or self.subject or 'document').replace('/', '-')
+            return documents + [('%s.%s' % (name, extension), base64.b64encode(content))]
+        return documents
+
+    def _esp_after_signature(self, qr_image):
+        # Письма без печатной формы подписывают загруженный файл, и через
+        # _esp_extra_documents не проходят — номер им присваиваем здесь.
+        # Вызов до построения печатной версии: номер печатается на её полях.
+        self._assign_document_number()
+        return super()._esp_after_signature(qr_image)
+
+    def _esp_copy_stamp_lines(self, document):
+        """Номер и дата письма на полях печатной версии — как раньше в
+        боковой подписи: у самого письма, у дополнительных файлов — без
+        номера."""
+        lines = super()._esp_copy_stamp_lines(document)
+        signed = document.signature_ids[:1].signed_at
+        date = fields.Datetime.context_timestamp(self, signed).strftime('%d.%m.%Y') \
+            if signed else ''
+        if document.source_field == 'attachment_additional_sign_ids':
+            return lines + ["от %s" % date]
+        return lines + ["%s от %s" % (self.name or '', date)]
 
     # ---------------------------------------------------------
     # Проверки типа документа

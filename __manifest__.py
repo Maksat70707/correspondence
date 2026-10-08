@@ -1,7 +1,7 @@
 {
     'name': 'Correspondence',
     'summary': 'Register and track correspondence',
-    'version': '19.0.1.0.0',
+    'version': '19.0.1.0.1',
     'author': 'Caspiy Neft, Maksat',
     'category': 'Productivity',
     'license': 'LGPL-3',
@@ -10,6 +10,7 @@
         'mail',
         'hr',
         'appstream_approval',
+        'docx_report_pro',  # render_docx: печатная форма письма на подпись
         'contacts',
         'delegation',  # для работы делегирования
         'portal',  # для портального подписания
