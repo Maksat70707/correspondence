@@ -1002,6 +1002,12 @@ class OutgoingDocument(models.Model):
             old_state = record.state
             record._remove_approval_activity(action="return", reason=reason)
             record.with_context(reject_reason=reason).write({"state": state})
+            # appstream_approval 19.0.0.2 аннулирует подписи тех этапов,
+            # которые документ будет проходить заново. Для согласующих это
+            # делает super(), а своя ветка повторяет шаги фреймворка — без
+            # этой строки подпись утверждающего, поставленная до возврата,
+            # осталась бы действующей и на странице проверки по QR.
+            record._esp_annul_stages(old_state, state)
             record.env.invalidate_all()
             record._on_return(new_state=state, old_state=old_state, reason=reason)
             record._schedule_approval_activity()
@@ -1936,21 +1942,6 @@ class OutgoingDocument(models.Model):
 
         return self.env['res.partner']
 
-    def _portal_signing_complete(self):
-        """
-        Fallback: вызывается из portal_signing_mixin если _process_post_approval
-        не доступен. В штатном потоке НЕ вызывается — вся логика перехода
-        обрабатывается через _process_post_approval.
-        """
-        self.ensure_one()
-        next_state = self._get_next_state_after(self.state)
-        if not next_state:
-            next_state = 'processing'
-
-        if hasattr(self, "method_in_middle"):
-            self.method_in_middle()
-        self.sudo().get_agreement_lines(next_state)
-        
     # ---------------------------------------------------------
     # Проверки типа документа
     # ---------------------------------------------------------

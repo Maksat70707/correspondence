@@ -488,6 +488,32 @@
                                     <field name="commentary"/>
                                 </list>
                             </field>
+
+                            <!-- Блок ЭЦП. appstream_approval 19.0.0.2
+                                 дорисовывает его сюда сам (_esp_add_document_field),
+                                 но вместе со ссылками выводит и поле «Файлы для
+                                 подписи ЭЦП». В корреспонденции файлы на подпись
+                                 формирует сама система, вручную их сюда класть
+                                 незачем, поэтому выводим блок явно: присутствие
+                                 esp_attachment_ids в arch отключает автовставку. -->
+                            <group>
+                                <field name="esp_attachment_ids" invisible="1"/>
+                                <field name="esp_signature_url" widget="url" readonly="1"
+                                       string="Проверка подписей"
+                                       text="Открыть страницу проверки"
+                                       options="{'website_path': True}"
+                                       invisible="not esp_signature_url"/>
+                                <field name="esp_copy_url" widget="url" readonly="1"
+                                       string="Печатная версия"
+                                       text="Скачать печатную версию"
+                                       options="{'website_path': True}"
+                                       invisible="not esp_copy_url"/>
+                                <field name="esp_download_url" widget="url" readonly="1"
+                                       string="Подписанный документ"
+                                       text="Скачать документ и подписи"
+                                       options="{'website_path': True}"
+                                       invisible="not esp_download_url"/>
+                            </group>
                         </page>
 
                         <!-- Вкладка: История согласований -->

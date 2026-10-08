@@ -81,13 +81,16 @@
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <h2 class="mb-0"><t t-esc="document.name"/></h2>
                         
-                        <!-- Кнопка подписания -->
+                        <!-- Кнопка подписания. Весь диалог (предпросмотр
+                             файла, NCALayer, QR для eGov Mobile) даёт
+                             appstream_approval: portal_sign_esp.js ловит
+                             класс o_esp_portal_sign и читает data-атрибуты. -->
                         <t t-if="document.state == 'approval_medical_examination' and can_sign">
-                            <button type="button" class="btn btn-primary btn-lg"
-                                t-att-data-document-id="document.id"
-                                t-att-data-partner-id="current_partner.id"
-                                t-att-data-document-name="document.name"
-                                onclick="signCorrespondenceEsp(this)">
+                            <button type="button"
+                                class="btn btn-primary btn-lg o_esp_portal_sign"
+                                data-res-model="corr.outgoing"
+                                t-att-data-res-id="document.id"
+                                data-signed-url="/correspondence/signed/success">
                                 <i class="fa fa-pencil"/> Подписать ЭЦП
                             </button>
                         </t>
@@ -242,85 +245,15 @@
             </div>
         </t>
         
-        <!-- JavaScript для подписания.
-             jQuery и blockUI намеренно НЕ подключаются: в Odoo 19 каталог
-             /web/static/lib/jquery.blockUI/ удалён и отдаёт 404, поэтому
-             $.blockUI оказывался undefined и обработчик падал на первой же
-             строке, так и не дойдя до NCALayer. Тянуть jQuery с внешнего CDN
-             ради индикатора загрузки на портальной странице тоже незачем. -->
-        <script>
-            function signCorrespondenceEsp(button) {
-                var documentId = button.getAttribute('data-document-id');
-                var partnerId = button.getAttribute('data-partner-id');
-                var name = button.getAttribute('data-document-name');
-                var xml = `&lt;data&gt;&lt;model&gt;corr.outgoing&lt;/model&gt;&lt;id&gt;${documentId}&lt;/id&gt;&lt;uid&gt;${partnerId}&lt;/uid&gt;&lt;display_name&gt;${name}&lt;/display_name&gt;&lt;n&gt;${name}&lt;/n&gt;&lt;/data&gt;`;
+        <!-- Своего JS для подписания здесь больше нет.
 
-                var originalLabel = button.textContent;
-                function setBusy(busy) {
-                    button.disabled = busy;
-                    button.textContent = busy ? 'Подписание документа...' : originalLabel;
-                }
+             Было: вручную собранный XML, legacy-API ncalayer.js (window.webSocket
+             + basicsSign) и POST на /correspondence/sign/esp/success. Этот путь
+             проверял только сертификат и слал его прямо по ncanode_link, который
+             в 19.0.0.2 стал базовым адресом сервиса.
 
-                if (!window.webSocket) {
-                    alert("NCALayer не подключен. Установите и запустите NCALayer, затем обновите страницу.");
-                    if (typeof initNcaLayer === 'function') { initNcaLayer(); }
-                    return;
-                }
-                if (window.webSocket.readyState !== WebSocket.OPEN) {
-                    alert("Соединение с NCALayer не установлено. Убедитесь, что NCALayer запущен, и повторите попытку.");
-                    initNcaLayer();
-                    return;
-                }
-
-                setBusy(true);
-                basicsSign(xml, function (result) {
-                    if (!(result.status === true &amp;&amp; result.responseObject &amp;&amp; typeof result.responseObject === 'object')) {
-                        alert("Ошибка при подписании. Попробуйте еще раз!");
-                        setBusy(false);
-                        return;
-                    }
-                    fetch('/correspondence/sign/esp/success', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            document_id: documentId,
-                            uid: partnerId,
-                            name: name,
-                            xml: result.responseObject["result"][0]
-                        }),
-                    })
-                    .then(function (response) {
-                        // Без этой проверки страница ошибки Odoo (HTML) уходила
-                        // в response.json() и падала невнятным
-                        // "Unexpected token '&lt;'".
-                        if (!response.ok) {
-                            throw new Error('сервер вернул ' + response.status + ' ' + response.statusText);
-                        }
-                        return response.json();
-                    })
-                    .then(function (data) {
-                        if (data.error) {
-                            var err = data.error.data || {};
-                            alert(err.message || data.error.message || 'Ошибка сервера');
-                            setBusy(false);
-                            return;
-                        }
-                        var res = data.result || {};
-                        if (res.status === 200) {
-                            window.location.href = res.redirect_url || "/correspondence/signed/success";
-                        } else {
-                            alert(res.message || 'Не удалось сохранить подпись.');
-                            setBusy(false);
-                        }
-                    })
-                    .catch(function (error) {
-                        alert("Ошибка при отправке подписи: " + (error.message || error));
-                        setBusy(false);
-                    });
-                });
-            }
-        </script>
-        <script src="/appstream_approval/static/src/lib/ncalayer/ncalayer.js"></script>
+             Стало: appstream_approval грузит ncalayer_client.js, esp_signing.js и
+             portal_sign_esp.js в web.assets_frontend — их подключать не нужно. -->
     </template>
 
     <!-- ============================================== -->

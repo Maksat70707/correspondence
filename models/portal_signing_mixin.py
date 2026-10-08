@@ -1,11 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from odoo import _, models, Command, fields, api
-from odoo.exceptions import ValidationError
-from datetime import datetime
-import base64
-import qrcode
-from io import BytesIO
+from odoo import models, Command, fields
 
 import logging
 
@@ -14,13 +9,23 @@ _logger = logging.getLogger(__name__)
 
 class PortalSigningMixin(models.AbstractModel):
     """
-    Миксин для подписания документов портальными пользователями (внешними контрагентами).
+    Миксин для подписания документов портальными пользователями (внешними
+    контрагентами).
 
-    Основной сценарий: medical_worker_id подписывает с ЭЦП на портале
-    как 3-й подписант в статусе approval_medical_examination.
+    Основной сценарий: medical_worker_id подписывает с ЭЦП на портале как
+    3-й подписант в статусе approval_medical_examination.
 
-    Подписание обрабатывается через единую логику _process_post_approval,
-    что гарантирует корректный переход между подписантами и статусами.
+    Саму подпись с 19.0.0.2 ведёт appstream_approval: кнопка
+    o_esp_portal_sign на портальной странице открывает штатный диалог
+    (предпросмотр файла, NCALayer или QR для eGov Mobile) и уходит в
+    /sign_esp. Там проверяется подпись, ИИН/БИН ключа сверяется с
+    карточкой контрагента, подпись сохраняется в «Подписи ЭЦП», а затем
+    вызывается action_approve() — то есть ровно тот же путь, что у
+    подписанта в бэкенде: after_script -> add_to_history ->
+    _process_post_approval.
+
+    Здесь остаётся только то, что знает модель: кто подписант, как
+    завести ему строку согласования и как это показать.
     """
     _name = "portal.signing.mixin"
     _description = "Portal Signing Mixin"
@@ -90,112 +95,6 @@ class PortalSigningMixin(models.AbstractModel):
                 })
             )
         return agreement_lines, sequence, init_approvers
-
-    def portal_sign_esp(self, user_id, certificate_data, xml_signature):
-        """
-        Обрабатывает подписание через портал.
-        Вызывается из контроллера после успешной проверки ЭЦП.
-
-        Унифицировано с системным подписанием:
-        1. Находит agreement_line текущего подписанта
-        2. Записывает данные сертификата и QR
-        3. Добавляет в историю (+ вшивает ЭЦП в файл)
-        4. Вызывает _process_post_approval для корректного перехода
-
-        Returns: dict с status и message
-        """
-        self.ensure_one()
-
-        # 1. Находим agreement line для этого пользователя
-        approver = self.state_agreement_line_ids.filtered(
-            lambda l: l.user_id.id == user_id and l.status == 'in_progress'
-        )
-        if not approver:
-            return {
-                'status': 500,
-                'message': "Вы не текущий согласующий или уже подписали документ!"
-            }
-
-        # 2. Генерируем QR код
-        qr_image = self._generate_signature_qr(user_id)
-
-        # 3. Записываем данные сертификата
-        approver.sudo().write({
-            'serial_number': certificate_data.get('serial_number'),
-            'certificate_start_date': certificate_data.get('start_date'),
-            'certificate_end_date': certificate_data.get('end_date'),
-            'issued_by': certificate_data.get('issued_by'),
-            'issued_to': certificate_data.get('issued_to'),
-            'certificate_status': 'Валидный' if certificate_data.get('valid') else 'Невалидный',
-            'signed': True,
-            'qr': qr_image,
-            'status': 'agreed',
-            'agreement_date': datetime.now(),
-        })
-
-        # 4. Добавляем в историю с меткой текущего статуса
-        #    (add_to_history также вшивает ЭЦП в файл через _embed_esp_in_attachments)
-        if hasattr(self, 'add_to_history'):
-            state_description = {
-                sd[0]: sd[1]
-                for sd in self._fields['state']._description_selection(self.env)
-            }
-            cur_state_label = state_description.get(self.state, '')
-            self.sudo().add_to_history(approver, cur_state_label)
-
-        # 5. Удаляем activity текущего подписанта
-        self._remove_approval_activity(user_id=user_id)
-
-        # 6. Используем единую логику перехода:
-        #    _process_post_approval обрабатывает:
-        #    - удаление non-all_approve параллельных
-        #    - проверку оставшихся in_progress
-        #    - активацию следующих waiting → in_progress
-        #    - переход на следующий статус когда все подписали
-        if hasattr(self, '_process_post_approval'):
-            self.sudo()._process_post_approval(approver, from_portal=True)
-        else:
-            # Fallback если _process_post_approval не определён
-            remaining = self.state_agreement_line_ids.filtered(
-                lambda l: l.status in ('in_progress', 'waiting')
-            )
-            if not remaining:
-                self._portal_signing_complete()
-
-        return {
-            'status': 200,
-            'message': "Документ успешно подписан!"
-        }
-
-    def _generate_signature_qr(self, user_id):
-        """Генерирует QR-код для подписи."""
-        config_parameter = self.env['ir.config_parameter'].sudo().search_read(
-            [('key', '=', 'web.base.url')], ['value']
-        )
-        base_url = config_parameter[0]['value'] if config_parameter else 'http://localhost:8069'
-
-        data = f'{base_url}/signature/{self._name}/{self.id}/{user_id}'
-
-        qr = qrcode.QRCode(
-            version=1,
-            error_correction=qrcode.constants.ERROR_CORRECT_L,
-            box_size=10,
-            border=4
-        )
-        qr.add_data(data)
-        qr.make(fit=True)
-
-        temp = BytesIO()
-        img = qr.make_image(fill_color='black', back_color='white')
-        img.save(temp, format="PNG")
-        return base64.b64encode(temp.getvalue())
-
-    def _portal_signing_complete(self):
-        """
-        Вызывается когда все портальные пользователи подписали документ.
-        Переопределяется в наследующей модели.
-        """
-        pass
 
     def get_portal_signing_url(self):
         """Возвращает URL для портального подписания."""

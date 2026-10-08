@@ -3,9 +3,6 @@
 import base64
 import logging
 from werkzeug.exceptions import NotFound
-import json
-import requests
-from datetime import datetime, timezone
 
 from odoo import http
 from odoo.http import request
@@ -36,17 +33,21 @@ class CorrespondencePortalController(http.Controller):
     """
     Контроллер для работы с корреспонденцией через портал.
 
-    Ветка под appstream_approval v3 (NCANode).
+    Подписание ЭЦП своего кода здесь больше НЕ имеет. С appstream_approval
+    19.0.0.2 портальная подпись входит в сам фреймворк: кнопка с классом
+    o_esp_portal_sign (portal_sign_esp.js в web.assets_frontend) открывает
+    тот же диалог, что и в бэкенде, и уходит в штатный /sign_esp.
 
-    Подписание ЭЦП: портальный JS собирает XML, подписывает его через
-    NCALayer (legacy-API из static/src/lib/ncalayer/ncalayer.js) и шлёт
-    результат на /correspondence/sign/esp/success. Дальше сертификат
-    проверяется в NCANode по адресу из appstream_approval.ncanode_link,
-    а запись согласования обновляет portal_signing_mixin.portal_sign_esp().
+    Свой маршрут /correspondence/sign/esp/success убран: он слал POST прямо
+    по appstream_approval.ncanode_link со старым телом {"certs": [...]}, а в
+    19.0.0.2 этот параметр хранит БАЗОВЫЙ адрес сервиса — методы теперь
+    /xml/verify и /cms/verify. Тот запрос ушёл бы в корень NCANode.
 
-    В v4 этот путь заменён на /esp/get_sign_obj -> /sign_esp -> 
-    /esp/save_signed_pdf с локальным разбором сертификата (cryptography).
-    Соответствующая реализация живёт в ветке 19.0.
+    Что даёт штатный путь взамен: предпросмотр файла до подписи (ст. 50 п. 3
+    подп. 1 Цифрового кодекса), QR для eGov Mobile — медработнику NCALayer
+    ставить не нужно, — сверка ИИН/БИН ключа с карточкой контрагента,
+    проверка самой подписи, а не только сертификата, и сохранение подписи в
+    «Подписи ЭЦП» со страницей проверки.
     """
 
     @http.route(['/my/correspondence', '/my/correspondence/page/<int:page>'],
@@ -179,94 +180,3 @@ class CorrespondencePortalController(http.Controller):
         ]
 
         return request.make_response(file_content, headers=headers)
-
-    @http.route(['/correspondence/sign/esp/success'], type='jsonrpc', auth="user", website=True)
-    def sign_esp_success(self, **kwargs):
-        """Обработка успешного подписания ЭЦП с портала (через NCANode)"""
-        data = json.loads(request.httprequest.data.decode('utf-8'))
-
-        document_id = int(data.get('document_id'))
-        uid = int(data.get('uid'))  # partner_id
-        xml_signature = data.get('xml')
-
-        document = request.env['corr.outgoing'].sudo().browse(document_id)
-
-        if not document.exists():
-            return {"status": 500, "message": "Документ не найден!"}
-
-        # Извлекаем сертификат из XML
-        xml_split = xml_signature.split("X509Certificate>", 1)[1]
-        x509 = xml_split[0:xml_split.index("</")]
-
-        # Проверяем сертификат через NCANode
-        params = json.dumps({
-            "revocationCheck": ["OCSP"],
-            "certs": [x509.replace('\n', '')]
-        })
-
-        ncanode_link = request.env['ir.config_parameter'].sudo().get_param('appstream_approval.ncanode_link')
-        if not ncanode_link:
-            return {"status": 500, "message": "NCANode не настроен в системе"}
-
-        try:
-            req = requests.post(
-                ncanode_link,
-                params,
-                headers={'Content-Type': 'application/json', 'accept': 'application/json'}
-            )
-            result = json.loads(req.content)
-
-            if result['status'] != 200:
-                return {"status": result['status'], "message": result.get('message', 'Ошибка проверки')}
-
-            signer = result['signers'][0]
-
-            if not signer['valid']:
-                return {"status": 500, "message": "ЭЦП ключ недействителен!"}
-
-            start_date = datetime.fromisoformat(signer['notBefore'])
-            end_date = datetime.fromisoformat(signer['notAfter'])
-            now = datetime.now(timezone.utc)
-
-            if not start_date < now < end_date:
-                return {"status": 500, "message": "Срок ключа ЭЦП истек!"}
-
-            # Проверяем ИИН/БИН
-            partner = request.env['res.partner'].sudo().browse(uid)
-            partner_iin = partner.vat
-
-            ins = []
-            if 'iin' in signer['subject']:
-                ins.append(signer['subject']['iin'])
-            if 'bin' in signer['subject']:
-                ins.append(signer['subject']['bin'])
-
-            if not partner_iin or partner_iin not in ins:
-                return {
-                    'status': 500,
-                    'message': "ИИН/БИН ключа ЭЦП не совпадает с данными в профиле!"
-                }
-
-            certificate_data = {
-                'serial_number': signer['serialNumber'],
-                'start_date': start_date.date(),
-                'end_date': end_date.date(),
-                'issued_by': signer['issuer']['dn'],
-                'issued_to': signer['subject']['dn'],
-                'valid': signer['valid'],
-            }
-
-            user = request.env['res.users'].sudo().search([('partner_id', '=', uid)], limit=1)
-            if not user:
-                return {"status": 500, "message": "Пользователь не найден!"}
-
-            result = document.portal_sign_esp(user.id, certificate_data, xml_signature)
-
-            if result.get('status') == 200:
-                result['redirect_url'] = '/correspondence/signed/success'
-
-            return result
-
-        except Exception as e:
-            _logger.exception("Error in sign_esp_success")
-            return {"status": 500, "message": str(e)}

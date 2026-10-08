@@ -289,10 +289,18 @@
                         <!-- Вкладка: Текущие согласующие -->
                         <page string="Согласующие" name="approvers"
                               invisible="state not in ['review']">
+                            <!-- Во входящих ЭЦП не используется ни на одном
+                                 этапе, поэтому глушим обе автовставки
+                                 appstream_approval 19.0.0.2: присутствие
+                                 esp_attachment_ids в arch отключает блок с
+                                 файлами и ссылками, а esp_settings_info в
+                                 списке — колонки настроек подписи. -->
+                            <field name="esp_attachment_ids" invisible="1"/>
                             <field name="state_agreement_line_ids" readonly="1">
                                 <list decoration-success="status == 'agreed'"
                                       decoration-warning="status == 'in_progress'"
                                       decoration-muted="status == 'waiting'">
+                                    <field name="esp_settings_info" column_invisible="1"/>
                                     <field name="sequence" string="№"/>
                                     <field name="delegated" column_invisible="1"/>
                                     <field name="user_id"/>
