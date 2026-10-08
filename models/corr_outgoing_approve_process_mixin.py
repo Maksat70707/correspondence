@@ -13,11 +13,6 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
     _name = "corr.outgoing.approve.process.mixin"
     _description = "Correspondence Outgoing approve process mixin"
 
-    number_of_esp_signs = fields.Integer(
-        string="Количество ЭЦП подписей",
-        default=0,
-        copy=False,
-    )
 
     # ==================================================================
     # Маршрутизация статусов
@@ -554,7 +549,7 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
 
 
         # ===============================================================
-        # Подпись ЭЦП: номер письма и счётчик подписей
+        # Подпись ЭЦП: номер письма
         # ===============================================================
         # QR и боковая подпись в файлы больше не вшиваются. После подписи
         # модуль согласования сам кладёт в поле печатную версию: QR на
@@ -566,7 +561,6 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
             # на ней как "{номер} от {дата}".
             if hasattr(self, '_assign_document_number'):
                 self._assign_document_number()
-            self.sudo().number_of_esp_signs += 1
     def additional_filter(self, init_approvers=None):
         return init_approvers
 

@@ -265,8 +265,8 @@
                                 </list>
                             </field>
                         </page>
-                        <!-- Вкладка: Корреспонденты -->
-                        <page string="Корреспонденты" name="correspondents">
+                        <!-- Вкладка: Отправители -->
+                        <page string="Отправители" name="correspondents">
                             <field name="show_col_full_name" invisible="1"/>
                             <field name="show_col_address" invisible="1"/>
                             <field name="show_col_position" invisible="1"/>
@@ -286,9 +286,9 @@
                                 </list>
                             </field>
                         </page>
-                        <!-- Вкладка: Текущие согласующие -->
-                        <page string="Согласующие" name="approvers"
-                              invisible="state not in ['review']">
+                        <!-- Вкладка: Согласование. Текущие и история —
+                             вложенными вкладками, как в исходящих и в закупе. -->
+                        <page string="Согласующие" name="approvers">
                             <!-- Во входящих ЭЦП не используется ни на одном
                                  этапе, поэтому глушим обе автовставки
                                  appstream_approval 19.0.0.2: присутствие
@@ -296,36 +296,38 @@
                                  файлами и ссылками, а esp_settings_info в
                                  списке — колонки настроек подписи. -->
                             <field name="esp_attachment_ids" invisible="1"/>
-                            <field name="state_agreement_line_ids" readonly="1">
-                                <list decoration-success="status == 'agreed'"
-                                      decoration-warning="status == 'in_progress'"
-                                      decoration-muted="status == 'waiting'">
-                                    <field name="esp_settings_info" column_invisible="1"/>
-                                    <field name="sequence" string="№"/>
-                                    <field name="delegated" column_invisible="1"/>
-                                    <field name="user_id"/>
-                                    <field name="original_user_id" string="Вместо" invisible="not delegated"/>
-                                    <field name="job_id"/>
-                                    <field name="status"/>
-                                    <field name="agreement_date"/>
-                                    <field name="commentary"/>
-                                </list>
-                            </field>
-                        </page>
-                        <!-- Вкладка: История согласований -->
-                        <page string="История согласований" name="approval_history">
-                            <field name="state_agreement_history_line_ids" readonly="1">
-                                <list>
-                                    <field name="user_id"/>
-                                    <field name="job_id"/>
-                                    <field name="status"/>
-                                    <field name="agreement_date"/>
-                                    <field name="commentary"/>
-                                    <field name="signed" widget="boolean"/>
-                                </list>
-                            </field>
-                        </page>
-                    </notebook>
+                            <notebook>
+                                <page string="Текущие" name="approvers_current">
+                                    <field name="state_agreement_line_ids" readonly="1">
+                                        <list decoration-success="status == 'agreed'"
+                                              decoration-warning="status == 'in_progress'"
+                                              decoration-muted="status == 'waiting'">
+                                            <field name="esp_settings_info" column_invisible="1"/>
+                                            <field name="sequence" string="№"/>
+                                            <field name="delegated" column_invisible="1"/>
+                                            <field name="user_id"/>
+                                            <field name="original_user_id" string="Вместо" invisible="not delegated"/>
+                                            <field name="job_id"/>
+                                            <field name="status"/>
+                                            <field name="agreement_date"/>
+                                            <field name="commentary"/>
+                                        </list>
+                                    </field>
+                                </page>
+                                <page string="История" name="approval_history">
+                                    <field name="state_agreement_history_line_ids" readonly="1">
+                                        <list>
+                                            <field name="user_id"/>
+                                            <field name="job_id"/>
+                                            <field name="status"/>
+                                            <field name="agreement_date"/>
+                                            <field name="commentary"/>
+                                            <field name="signed" widget="boolean"/>
+                                        </list>
+                                    </field>
+                                </page>
+                            </notebook>
+                        </page>                    </notebook>
 
                 </sheet>
 

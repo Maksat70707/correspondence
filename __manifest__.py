@@ -1,7 +1,7 @@
 {
     'name': 'Correspondence',
     'summary': 'Register and track correspondence',
-    'version': '19.0.1.0.1',
+    'version': '19.0.1.0.2',
     'author': 'Caspiy Neft, Maksat',
     'category': 'Productivity',
     'license': 'LGPL-3',

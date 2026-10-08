@@ -203,7 +203,26 @@
                                 </li>
                             </t>
                         </ul>
-                        
+
+                        <!-- Подписанное: печатная версия с QR и архив с
+                             подписями. Поля вычисляет appstream_approval, а
+                             маршруты /signature_copy и /signature_download
+                             публичные — ссылки работают и из портала.
+                             Направление формируется печатной формой, её нет
+                             ни в одном поле документа, поэтому иначе
+                             медработнику подписанное взять негде. -->
+                        <t t-if="document.esp_copy_url or document.esp_download_url">
+                            <h5 class="mt-4">Подписанный документ</h5>
+                            <a t-if="document.esp_copy_url" t-att-href="document.esp_copy_url"
+                               class="btn btn-sm btn-outline-primary me-2">
+                                <i class="fa fa-file-pdf-o"/> Печатная версия
+                            </a>
+                            <a t-if="document.esp_download_url" t-att-href="document.esp_download_url"
+                               class="btn btn-sm btn-outline-secondary">
+                                <i class="fa fa-download"/> Документ и подписи
+                            </a>
+                        </t>
+
                         <!-- История согласования -->
                         <t t-if="document.state_agreement_history_line_ids">
                             <h5 class="mt-4">История подписания</h5>

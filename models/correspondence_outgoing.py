@@ -915,10 +915,6 @@ class OutgoingDocument(models.Model):
 
     def method_on_start(self):
         """Валидация перед запуском согласования (из draft)"""
-        allowed_mimetypes = [
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',  # DOCX
-            'application/pdf',  # PDF
-        ]
         for rec in self:
             if not rec.subject:
                 raise ValidationError(_("Укажите тему документа"))
@@ -929,25 +925,16 @@ class OutgoingDocument(models.Model):
             if rec.type_id == simple_type and not rec.attachment_to_sign_ids:
                 raise ValidationError(_("Прикрепите исходящее письмо для подписания"))
 
-            for attachment in rec.attachment_to_sign_ids:
-                if attachment.mimetype not in allowed_mimetypes:
-                    raise ValidationError(
-                        _("Формат вложения для подписания может быть только .pdf или .docx!")
-                    )
-
     def method_in_middle(self):
-        """Валидация перед переходом между промежуточными статусами"""
-        # Проверяем формат вложений перед подписанием ЭЦП (переход в approval)
-        if self.state == 'under_approval':
-            allowed_mimetypes = [
-                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',  # DOCX
-                'application/pdf',  # PDF
-            ]
-            for attachment in self.attachment_to_sign_ids:
-                if attachment.mimetype not in allowed_mimetypes:
-                    raise ValidationError(
-                        _("Формат вложения для подписания может быть только .pdf или .docx!")
-                    )
+        """Валидация перед переходом между промежуточными статусами.
+
+        Проверять формат вложений больше не нужно: подписывается хеш файла
+        («XML с хешем документа»), и сам файл никуда не передаётся, так что
+        подписать можно вложение любого формата. Раньше требовались .pdf
+        или .docx, потому что QR и лист с данными сертификата вшивались в
+        сам файл и модуль умел это только для этих двух форматов.
+        """
+        return
 
     def method_on_approved(self):
         """Вызывается после полного согласования (переход в done)"""
@@ -1037,9 +1024,6 @@ class OutgoingDocument(models.Model):
         # Очищаем согласующих
         self.sudo().state_agreement_line_ids.unlink()
 
-        # Сбрасываем счётчик ЭЦП подписей при возврате на доработку
-        if new_state == 'draft':
-            self.sudo().number_of_esp_signs = 0
 
         # Сообщение в чаттер здесь НЕ постим: его публикует
         # appstream_approval/wizard/approval_return_wizard.py:action_return
@@ -1956,11 +1940,17 @@ class OutgoingDocument(models.Model):
 
     def _esp_has_printed_form(self):
         """Письмо формируется печатной формой (направления, объяснительная,
-        приглашение на работу, справка): подписывается она, а не файл
-        «Исходящее письмо для подписания»."""
+        приглашение на работу, справка, шаблонное письмо): подписывается
+        она, а не файл «Исходящее письмо для подписания».
+
+        Здесь перечислены все типы, у которых письмо генерируется. У
+        остальных (обычное, гарантийное, уведомление об изменении условий)
+        письмо загружают файлом — у них show_main_attachment = True.
+        """
         return any(getattr(self, check)() for check in (
             '_is_explanation_type', '_is_medical_examination_type',
             '_is_medical_checkup_type', '_is_job_offer_type', '_is_reference_type',
+            '_is_general_template_type',
         ) if hasattr(self, check))
 
     def _esp_document_fields(self, line=None):
@@ -2072,3 +2062,13 @@ class OutgoingDocument(models.Model):
             raise_if_not_found=False
         )
         return self.type_id == reference_type
+
+    def _is_general_template_type(self):
+        """
+        Проверяет, является ли документ типом Шаблонное письмо.
+        """
+        general_template_type = self.env.ref(
+            'correspondence.general_template',
+            raise_if_not_found=False
+        )
+        return self.type_id == general_template_type
