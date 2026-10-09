@@ -32,6 +32,14 @@ class OutgoingDocument(models.Model):
         tracking=True,
     )
 
+    registration_date = fields.Date(
+        string="Дата регистрации",
+        copy=False,
+        readonly=True,
+        help="Проставляется вместе с номером — в момент подписания ЭЦП. "
+             "Печатается в шапке письма.",
+    )
+
     active = fields.Boolean(
         string="Активен",
         default=True,
@@ -880,9 +888,13 @@ class OutgoingDocument(models.Model):
         Sequence = self.env["ir.sequence"].sudo()
         for rec in self:
             if not rec.name or rec.name == "---":
-                rec.sudo().name = (
-                    Sequence.next_by_code("correspondence.outgoing") or "---"
-                )
+                # Дата регистрации проставляется здесь же: в шапке письма
+                # печатается именно она, и она должна совпадать в подписанном
+                # документе и при повторном скачивании.
+                rec.sudo().write({
+                    "name": Sequence.next_by_code("correspondence.outgoing") or "---",
+                    "registration_date": fields.Date.context_today(rec),
+                })
         return self
 
     def _fix_attachment_ownership(self):
@@ -1258,82 +1270,58 @@ class OutgoingDocument(models.Model):
         approver.sudo().commentary = False
 
 
-    def get_report_values(self) -> dict:
-        # Берём из истории тех кто подписал с ЭЦП
-        signed_lines = self.state_agreement_history_line_ids.filtered(lambda l: l.signed and l.qr)
-        last_signed = signed_lines[-1] if signed_lines else None
+    # ---------------------------------------------------------
+    # Значения для печатных форм
+    # ---------------------------------------------------------
+    #
+    # Ни QR, ни дат подписания, ни данных сертификатов здесь больше нет.
+    # Документ на подпись формируется ДО первой подписи и замораживается
+    # ею, поэтому подставить в него что-либо из истории подписания нельзя:
+    # вышла бы пустая строка в подписанном файле и заполненная — при
+    # повторном скачивании, то есть два разных документа.
+    #
+    # Кто и когда подписал, показывает печатная версия appstream_approval:
+    # QR и надпись вдоль поля на каждой странице плюс лист «ДОКУМЕНТ
+    # УДОСТОВЕРЕН» с данными сертификатов.
 
-        values = {
-            'name': self.name,
-            'date': self.create_date.strftime('%d.%m.%Y') if self.create_date else '',
-            'summary': self.summary or '',
-            'signed_lines': signed_lines,
-            'images__insert': [{"img": record.qr, "w": 35, "h": 35} for record in signed_lines],
+    def _report_letter_date(self):
+        """Дата в шапке письма: дата регистрации, а пока номер не
+        присвоен — дата создания."""
+        self.ensure_one()
+        date = self.registration_date or (
+            self.create_date.date() if self.create_date else False)
+        return date.strftime('%d.%m.%Y') if date else ''
+
+    def _report_signer_values(self):
+        """ФИО и должность Утверждающего — из назначенного подписанта
+        (esp_signer_id), а не из истории подписания: на момент формирования
+        документа там ещё пусто."""
+        self.ensure_one()
+        employee = self.esp_signer_id.employee_id if self.esp_signer_id else None
+        job = employee.job_id if employee else None
+        return {
+            'signer': employee.name if employee else '',
+            'signer_job_rus': job.with_context(lang='ru_RU').name if job else '',
+            'signer_job_kaz': job.with_context(lang='kk_KZ').name if job else '',
+            'signer_job_eng': job.with_context(lang='en_US').name if job else '',
         }
 
-        # Добавляем данные последнего подписанта
-        if last_signed:
-            employee = last_signed.user_id.employee_id
-            job = employee.job_id if employee else None
-            values.update({
-                'approver': (last_signed.user_id.name or '') + _(" подписал(а)"),
-                'qr__insert': [{"img": last_signed.qr, "w": 20, "h": 20}],
-                'signed': True,
-                'signer_job_rus': job.with_context(lang='ru_RU').name if job else '',
-                'signer_job_kaz': job.with_context(lang='kk_KZ').name if job else '',
-                'signer': employee.name if employee else '',
-                'sign_date': last_signed.agreement_date.strftime('%d.%m.%Y') if last_signed.agreement_date else '',
-            })
-        else:
-            values.update({
-                'approver': '',
-                'qr__insert': [],
-                'signed': False,
-                'signer_job_rus': '',
-                'signer_job_kaz': '',
-                'signer': '',
-                'sign_date': '',
-            })
-
+    def get_report_values(self) -> dict:
+        """Значения, общие для всех печатных форм."""
+        self.ensure_one()
+        values = {
+            'name': self.name,
+            'date': self._report_letter_date(),
+            'summary': self.summary or '',
+        }
+        values.update(self._report_signer_values())
         return values
-
     def prepare_general_template_report_values(self):
         """Подготовка значений для отчёта «Шаблонное письмо».
 
-        Бланк заполняется целиком из полей формы. Подписывает только
-        Утверждающий сотрудник (esp_signer).
-        """
+        Бланк заполняется целиком из полей формы."""
         self.ensure_one()
         values = self.get_report_values()
-
-        signed_lines = self.state_agreement_history_line_ids.filtered(lambda l: l.signed)
-        signer_signed = signed_lines.filtered(lambda l: l.user_id == self.esp_signer_id)[:1]
-
-        ordered_ids = [signer_signed.id] if signer_signed else []
-        ordered_signed = self.env['appstream.approval.agreement.history.line'].browse(ordered_ids)
-
-        signer_qr_insert = []
-        signer_sign_date = ''
-        signer_name = ''
-        signer_job_rus = ''
-        signer_job_kaz = ''
-        if signer_signed:
-            signer_employee = signer_signed.user_id.employee_id
-            signer_job = signer_employee.job_id if signer_employee else None
-            signer_name = signer_employee.name if signer_employee else ''
-            signer_job_rus = signer_job.with_context(lang='ru_RU').name if signer_job else ''
-            signer_job_kaz = signer_job.with_context(lang='kk_KZ').name if signer_job else ''
-            signer_sign_date = signer_signed.agreement_date.strftime('%d.%m.%Y') if signer_signed.agreement_date else ''
-            if signer_signed.qr:
-                signer_qr_insert = [{"img": signer_signed.qr, "w": 20, "h": 20}]
-
-        # Дата в шапке бланка — дата регистрации письма, то есть дата подписи
-        # утверждающего: номер присваивается в тот же момент. Пока письмо не
-        # подписано, показываем дату создания.
-        letter_date = signer_sign_date or (
-            self.create_date.strftime('%d.%m.%Y') if self.create_date else ''
-        )
-
         values.update({
             'where': self.where or '',
             'whom': self.whom or '',
@@ -1341,62 +1329,19 @@ class OutgoingDocument(models.Model):
             'mail_subject_rus': self.mail_subject_rus or '',
             'summary_kaz': self.summary_kaz or '',
             'summary_rus': self.summary_rus or '',
-            'date': letter_date,
-            # В бланке {{create_uid}} — строка "исполнитель", нужно имя, а не recordset
+            # В бланке {{create_uid}} — строка «исполнитель», нужно имя, а не recordset
             'create_uid': self.create_uid.name or '',
             'contact_phone': self.contact_phone or '',
             'contact_email': self.contact_email or '',
-
-            'signer': signer_name,
-            'signer_job_rus': signer_job_rus,
-            'signer_job_kaz': signer_job_kaz,
-            'sign_date': signer_sign_date,
-            'qr__insert': signer_qr_insert,
-
-            'state_agreement_lines': ordered_signed,
-            'images__insert': [
-                {"img": record.qr, "w": 35, "h": 35}
-                for record in ordered_signed if record.qr
-            ],
         })
         return values
-
     def prepare_medical_checkup_report_values(self):
-        """Подготавливает данные для DOCX отчёта Направление на медицинское осмотр"""
+        """Подготавливает данные для DOCX отчёта Направление на медицинский осмотр"""
         self.ensure_one()
         values = self.get_report_values()
 
-        # Данные сотрудника
         employee = self.employee_id
         employee_job = employee.job_id if employee else None
-
-        # Подписи: esp_signer → employee (в порядке подписания)
-        signed_lines = self.state_agreement_history_line_ids.filtered(
-            lambda l: l.signed
-        )
-
-        # Собираем в правильном порядке: esp_signer (seq 1) → employee (seq 2)
-        signer_signed = signed_lines.filtered(
-            lambda l: l.user_id == self.esp_signer_id
-        )[:1]
-        emp_signed = signed_lines.filtered(
-            lambda l: self.employee_id
-            and self.employee_id.user_id
-            and l.user_id == self.employee_id.user_id
-        )[:1]
-
-        ordered_ids = []
-        for line in [signer_signed, emp_signed]:
-            if line and line.id:
-                ordered_ids.append(line.id)
-        ordered_signed = self.env['appstream.approval.agreement.history.line'].browse(ordered_ids)
-
-        # QR и дата подписания сотрудника (отдельно для ячейки T0[7])
-        emp_qr_insert = []
-        emp_sign_date = ''
-        if emp_signed and emp_signed.qr:
-            emp_qr_insert = [{"img": emp_signed.qr, "w": 20, "h": 20}]
-            emp_sign_date = emp_signed.agreement_date.strftime('%d.%m.%Y') if emp_signed.agreement_date else ''
 
         values.update({
             'employee_id': employee.name if employee else '',
@@ -1409,68 +1354,15 @@ class OutgoingDocument(models.Model):
             'reason_for_checkup_additional_screenings_rus': self.reason_for_checkup_additional_screenings_rus or '',
             'reason_for_checkup_additional_screenings_kaz': self.reason_for_checkup_additional_screenings_kaz or '',
             'medical_tittle': 'НАПРАВЛЕНИЕ НА МЕДИЦИНСКИЙ ОСМОТР' if not self.additional_screenings else 'НАПРАВЛЕНИЕ НА ДОПОЛНИТЕЛЬНЫЕ ОБСЛЕДОВАНИЯ',
-            'state_agreement_lines': ordered_signed,
-            'emp_qr__insert': emp_qr_insert,
-            'emp_sign_date': emp_sign_date,
-            'images__insert': [
-                {"img": record.qr, "w": 35, "h": 35}
-                for record in ordered_signed
-                if record.qr
-            ],
         })
         return values
-
     def prepare_explanation_request_report_values(self):
         """Подготавливает данные для DOCX отчёта Требование о письменном объяснении"""
         self.ensure_one()
         values = self.get_report_values()
 
-        # Данные сотрудника
         employee = self.employee_id
         employee_job = employee.job_id if employee else None
-
-        # Подписи: esp_signer (seq 1) → employee (seq 2)
-        signed_lines = self.state_agreement_history_line_ids.filtered(
-            lambda l: l.signed
-        )
-
-        signer_signed = signed_lines.filtered(
-            lambda l: l.user_id == self.esp_signer_id
-        )[:1]
-        emp_signed = signed_lines.filtered(
-            lambda l: self.employee_id
-            and self.employee_id.user_id
-            and l.user_id == self.employee_id.user_id
-        )[:1]
-
-        ordered_ids = []
-        for line in [signer_signed, emp_signed]:
-            if line and line.id:
-                ordered_ids.append(line.id)
-        ordered_signed = self.env['appstream.approval.agreement.history.line'].browse(ordered_ids)
-
-        # QR и дата подписания сотрудника (отдельно для ячейки T0[7])
-        emp_qr_insert = []
-        emp_sign_date = ''
-        if emp_signed and emp_signed.qr:
-            emp_qr_insert = [{"img": emp_signed.qr, "w": 20, "h": 20}]
-            emp_sign_date = emp_signed.agreement_date.strftime('%d.%m.%Y') if emp_signed.agreement_date else ''
-
-        # QR и данные Утверждающего (перезаписываем get_report_values, т.к. там last_signed = employee)
-        signer_qr_insert = []
-        signer_sign_date = ''
-        signer_name = ''
-        signer_job_rus = ''
-        signer_job_kaz = ''
-        if signer_signed and signer_signed.qr:
-            signer_qr_insert = [{"img": signer_signed.qr, "w": 20, "h": 20}]
-            signer_sign_date = signer_signed.agreement_date.strftime('%d.%m.%Y') if signer_signed.agreement_date else ''
-        if self.esp_signer_id:
-            signer_emp = self.esp_signer_id.employee_id
-            signer_job = signer_emp.job_id if signer_emp else None
-            signer_name = signer_emp.name if signer_emp else ''
-            signer_job_rus = signer_job.with_context(lang='ru_RU').name if signer_job else ''
-            signer_job_kaz = signer_job.with_context(lang='kk_KZ').name if signer_job else ''
 
         values.update({
             'employee_id': employee.name if employee else '',
@@ -1480,91 +1372,27 @@ class OutgoingDocument(models.Model):
             'explanatory_note_text_kaz': self.explanatory_note_text_kaz or '',
             'text_attachments_rus': self.text_attachments_rus or '',
             'text_attachments_kaz': self.text_attachments_kaz or '',
-            'state_agreement_lines': ordered_signed,
-            'images__insert': [
-                {"img": record.qr, "w": 35, "h": 35}
-                for record in ordered_signed
-                if record.qr
-            ],
-            # Утверждающий (T0[6]): перезаписываем данные из get_report_values
-            'qr__insert': signer_qr_insert,
-            'signer': signer_name,
-            'signer_job_rus': signer_job_rus,
-            'signer_job_kaz': signer_job_kaz,
-            'sign_date': signer_sign_date,
-            # Сотрудник (T0[7])
-            'emp_qr__insert': emp_qr_insert,
-            'emp_sign_date': emp_sign_date,
         })
         return values
-
     def prepare_medical_assessment_report_values(self):
-        """Подготавливает данные для DOCX отчёта Направление на медицинское освидетельствование"""
+        """Подготавливает данные для DOCX отчёта Направление на медицинское
+        освидетельствование.
+
+        Подписывают трое: уполномоченный представитель работодателя
+        (esp_signer_id), медицинский работник (medical_worker_id) и сам
+        работник (employee_id). Все трое известны до подписания, поэтому
+        таблица подписей бланка заполняется из полей записи."""
         self.ensure_one()
         values = self.get_report_values()
 
-        # Данные сотрудника
         employee = self.employee_id
-        employee_job = employee.job_id if employee else None
+        language_context = 'kk_KZ' if self.language == 'kazakh' else 'ru_RU'
 
-        # Подписанные линии из истории (для "ДОКУМЕНТ УДОСТОВЕРЕН" секций)
-        signed_lines = self.state_agreement_history_line_ids.filtered(lambda l: l.signed and l.qr)
-
-        # Данные утверждающего (esp_signer_id) — "уполномоченный представитель работодателя"
-        signer_user = self.esp_signer_id
-        signer_employee = signer_user.employee_id if signer_user else None
+        signer_employee = self.esp_signer_id.employee_id if self.esp_signer_id else None
         signer_job = signer_employee.job_id if signer_employee else None
 
-        # Ищем подписанные записи по ролям для QR кодов
-        # Порядок подписания: seq 1 = esp_signer, seq 2 = medical_worker, seq 3 = employee
-        emp_user = employee.user_id if employee else None
-        med_user = self.env['res.users'].sudo().search([
-            ('partner_id', '=', self.medical_worker_id.id)
-        ], limit=1) if self.medical_worker_id else None
-
-        emp_signed = signed_lines.filtered(
-            lambda l: emp_user and l.user_id.id == emp_user.id
-        )[:1] if emp_user else self.env['appstream.approval.agreement.history.line']
-        signer_signed = signed_lines.filtered(
-            lambda l: signer_user and l.user_id.id == signer_user.id
-        )[:1] if signer_user else self.env['appstream.approval.agreement.history.line']
-        med_signed = signed_lines.filtered(
-            lambda l: med_user and l.user_id.id == med_user.id
-        )[:1] if med_user else self.env['appstream.approval.agreement.history.line']
-
-        # Дата подписания утверждающего
-        signer_signing_date = ''
-        if signer_signed and signer_signed.agreement_date:
-            signer_signing_date = signer_signed.agreement_date.strftime('%d.%m.%Y')
-
-        # Дата подписания мед. работника
-        med_signing_date = ''
-        if med_signed and med_signed.agreement_date:
-            med_signing_date = med_signed.agreement_date.strftime('%d.%m.%Y')
-
-        # Дата ознакомления сотрудника
-        emp_date = ''
-        if emp_signed and emp_signed.agreement_date:
-            emp_date = emp_signed.agreement_date.strftime('%d.%m.%Y')
-
-        # Собираем state_agreement_lines в порядке подписания
-        # для цикла {%p for a in state_agreement_lines %} и images__insert
-        # Порядок: утверждающий → мед. работник → сотрудник
-        # recordset |= сортирует по id, поэтому собираем ids явно
-        ordered_ids = []
-        for line in [signer_signed, med_signed, emp_signed]:
-            if line and hasattr(line, 'id') and line.id:
-                ordered_ids.append(line.id)
-        ordered_signed = self.env['appstream.approval.agreement.history.line'].browse(ordered_ids)
-
-        # with_context(lang='ru_RU'
-        if self.language == 'kazakh':
-            language_context = 'kk_KZ'
-        else:
-            language_context = 'ru_RU'
-
         values.update({
-            # Данные сотрудника (шаблон: {{employee_id}}, {{employee_job_id}} и т.д.)
+            # Данные работника
             'employee_id': employee.name if employee else '',
             'employee_job_id': self.employee_job_id.with_context(lang=language_context).name if employee else '',
             'employee_identification_id': (self.employee_identification_id or '') if employee else '',
@@ -1584,82 +1412,25 @@ class OutgoingDocument(models.Model):
             'reason_for_medical_examination_rus': self.reason_for_medical_examination_rus or '',
             'reason_for_medical_examination_kaz': self.reason_for_medical_examination_kaz or '',
 
-            # Утверждающий (шаблон: {{signer}}, {{signer_job}}, {{signing_date}} для утв.)
-            'signer': signer_employee.name if signer_employee else '',
+            # Уполномоченный представитель работодателя. signer_job — одна
+            # колонка бланка, поэтому язык один, а не rus/kaz из общих значений.
             'signer_job': (
                 signer_job.with_context(lang=language_context).name if signer_job else ''
             ),
-            'signing_date': signer_signing_date,
 
-            # Медицинский работник (шаблон: {{medical_worker_id}}, {{medical_worker_job}})
+            # Медицинский работник
             'medical_worker_id': self.medical_worker_id.name if self.medical_worker_id else '',
             'medical_worker_job': self.medical_worker_job_id or '',
-            'med_signing_date': med_signing_date,
-
-            # Дата ознакомления сотрудника (шаблон: {{date}})
-            'date': emp_date,
 
             # Отказ от подписи
             'medical_assessment_refusal': self.medical_assessment_refusal or '',
-
-            # QR-коды подписантов в теле документа
-            # qr1 = утверждающий (esp_signer), qr2 = сотрудник, qr3 = мед. работник
-            'qr1__insert': (
-                [{"img": signer_signed.qr, "w": 35, "h": 35}]
-                if signer_signed and signer_signed.qr else []
-            ),
-            'qr2__insert': (
-                [{"img": emp_signed.qr, "w": 35, "h": 35}]
-                if emp_signed and emp_signed.qr else []
-            ),
-            'qr3__insert': (
-                [{"img": med_signed.qr, "w": 35, "h": 35}]
-                if med_signed and med_signed.qr else []
-            ),
-
-            # Для секции "ДОКУМЕНТ УДОСТОВЕРЕН" (один цикл, 3 подписанта)
-            # Порядок: утверждающий → мед. работник → сотрудник
-            'state_agreement_lines': ordered_signed,
-            'images__insert': [
-                {"img": record.qr, "w": 35, "h": 35}
-                for record in ordered_signed if record.qr
-            ],
         })
         return values
-
     def prepare_job_offer_report_values(self):
-        """Подготовка значений для отчёта «Предложение о работе».
-        Подписывает только Утверждающий сотрудник (esp_signer).
-        """
+        """Подготовка значений для отчёта «Предложение о работе»."""
         self.ensure_one()
         values = self.get_report_values()
 
-        # Подписи: только esp_signer
-        signed_lines = self.state_agreement_history_line_ids.filtered(
-            lambda l: l.signed
-        )
-        signer_signed = signed_lines.filtered(
-            lambda l: l.user_id == self.esp_signer_id
-        )[:1]
-
-        ordered_ids = [signer_signed.id] if signer_signed else []
-        ordered_signed = self.env['appstream.approval.agreement.history.line'].browse(ordered_ids)
-
-        # Данные Утверждающего
-        signer_qr_insert = []
-        signer_sign_date = ''
-        signer_name = ''
-        signer_job_rus = ''
-        if signer_signed:
-            signer_employee = signer_signed.user_id.employee_id
-            signer_job = signer_employee.job_id if signer_employee else None
-            signer_name = signer_employee.name if signer_employee else ''
-            signer_job_rus = signer_job.with_context(lang='ru_RU').name if signer_job else ''
-            signer_sign_date = signer_signed.agreement_date.strftime('%d.%m.%Y') if signer_signed.agreement_date else ''
-            if signer_signed.qr:
-                signer_qr_insert = [{"img": signer_signed.qr, "w": 20, "h": 20}]
-
-        # Должность — название
         position_name = ''
         if self.job_offer_position_id:
             position_name = self.job_offer_position_id.with_context(lang='ru_RU').name or ''
@@ -1690,66 +1461,23 @@ class OutgoingDocument(models.Model):
             'contact_phone': self.contact_phone or '',
             'contact_email': self.contact_email or '',
 
-            # Подписант
-            'signer_job_rus': signer_job_rus,
-            'employee_id': signer_name,
-            'qr__insert': signer_qr_insert,
-            'sign_date': signer_sign_date,
-            'signer': signer_name,
-
-            # Сертификаты
-            'state_agreement_lines': ordered_signed,
-            'images__insert': [
-                {"img": record.qr, "w": 35, "h": 35}
-                for record in ordered_signed if record.qr
-            ],
+            # В этом бланке подпись выводится через {{employee_id}}
+            'employee_id': values['signer'],
         })
         return values
-
     def prepare_reference_letter_report_values(self):
-        """Подготовка значений для отчёта "Справка с места работы".
-        Подписывает только Утверждающий сотрудник (esp_signer).
-        """
+        """Подготовка значений для отчёта «Справка с места работы»."""
         self.ensure_one()
         values = self.get_report_values()
-
-        # Подписи: только esp_signer
-        signed_lines = self.state_agreement_history_line_ids.filtered(
-            lambda l: l.signed
-        )
-        signer_signed = signed_lines.filtered(
-            lambda l: l.user_id == self.esp_signer_id
-        )[:1]
-
-        ordered_ids = [signer_signed.id] if signer_signed else []
-        ordered_signed = self.env['appstream.approval.agreement.history.line'].browse(ordered_ids)
-
-        # Данные Утверждающего
-        signer_qr_insert = []
-        signer_sign_date = ''
-        signer_name = ''
-        signer_job_rus = ''
-        signer_job_kaz = ''
-        signer_job_eng = ''
-        if signer_signed:
-            signer_employee = signer_signed.user_id.employee_id
-            signer_job = signer_employee.job_id if signer_employee else None
-            signer_name = signer_employee.name if signer_employee else ''
-            signer_job_rus = signer_job.with_context(lang='ru_RU').name if signer_job else ''
-            signer_job_eng = signer_job.with_context(lang='en_US').name if signer_job else ''
-            signer_job_kaz = signer_job.with_context(lang='kk_KZ').name if signer_job else ''
-            signer_sign_date = signer_signed.agreement_date.strftime('%d.%m.%Y') if signer_signed.agreement_date else ''
-            if signer_signed.qr:
-                signer_qr_insert = [{"img": signer_signed.qr, "w": 20, "h": 20}]
 
         work_schedule_kaz = 'Бес күндік жұмыс аптасы'
         work_schedule_rus = 'Пятидневный рабочий график'
         work_schedule_eng = 'Five-day working week'
 
         if self.is_vahta:
-            work_schedule_kaz = f'Вахталық әдіс, 14 күннен кейін 14 күн'
-            work_schedule_rus = f'Вахтовый метод, 14 дней через 14 дней'
-            work_schedule_eng = f'Shift method, 14 days on 14 days off'
+            work_schedule_kaz = 'Вахталық әдіс, 14 күннен кейін 14 күн'
+            work_schedule_rus = 'Вахтовый метод, 14 дней через 14 дней'
+            work_schedule_eng = 'Shift method, 14 days on 14 days off'
 
         values.update({
             'employee_id': self.employee_id.name if self.employee_id else '',
@@ -1768,24 +1496,8 @@ class OutgoingDocument(models.Model):
             'work_schedule_kaz': work_schedule_kaz,
             'work_schedule_rus': work_schedule_rus,
             'work_schedule_eng': work_schedule_eng,
-
-            # Подписант
-            'signer_job_rus': signer_job_rus,
-            'signer_job_kaz': signer_job_kaz,
-            'signer_job_eng': signer_job_eng,
-            'qr__insert': signer_qr_insert,
-            'sign_date': signer_sign_date,
-            'signer': signer_name,
-
-            # Сертификаты
-            'state_agreement_lines': ordered_signed,
-            'images__insert': [
-                {"img": record.qr, "w": 35, "h": 35}
-                for record in ordered_signed if record.qr
-            ],
         })
         return values
-
     # ---------------------------------------------------------
     # Методы скачивания отчётов
     # ---------------------------------------------------------
