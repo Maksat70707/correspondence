@@ -182,22 +182,6 @@
                             confirm="Вы уверены, что хотите отменить документ?"/>
 
                     <!-- ========================================= -->
-                    <!-- Кнопки скачивания отчётов                 -->
-                    <!-- ========================================= -->
-                    <button name="download_report_pdf"
-                            string="Скачать PDF"
-                            type="object"
-                            class="btn-secondary"
-                            icon="fa-file-pdf-o"
-                            invisible="state not in ['processing', 'done', 'review'] or not has_report"/>
-                    <button name="download_report_docx"
-                            string="Скачать DOCX"
-                            type="object"
-                            class="btn-secondary"
-                            icon="fa-file-word-o"
-                            invisible="state not in ['processing', 'done', 'review'] or not has_report"/>
-
-                    <!-- ========================================= -->
                     <!-- Statusbar                                 -->
                     <!-- ========================================= -->
                     <field name="state" widget="statusbar"
