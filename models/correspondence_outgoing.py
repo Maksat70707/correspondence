@@ -495,10 +495,6 @@ class OutgoingDocument(models.Model):
         string="Вахтовик",
         compute="_compute_is_vahta",
     )
-    has_report = fields.Boolean(
-        compute='_compute_has_report',
-        string="Доступен ли отчёт-шаблон для текущего типа",
-    )
     show_simple = fields.Boolean(
         compute="_compute_show_simple",
     )
@@ -605,10 +601,6 @@ class OutgoingDocument(models.Model):
         """Проверяет, является ли сотрудник вахтовиком"""
         for rec in self:
             rec.is_vahta = rec.current_salary < 25000
-    @api.depends('type_id', 'language')
-    def _compute_has_report(self):
-        for rec in self:
-            rec.has_report = bool(rec._get_report_by_type('pdf'))
     @api.depends('type_id', 'language')
     def _compute_show_general_template(self):
         """Проверяет, нужно ли показывать шаблонное письмо для печати"""
@@ -1596,35 +1588,14 @@ class OutgoingDocument(models.Model):
         # Возвращаем дефолтный отчёт
         return None
 
-    def download_report_pdf(self):
-        """Скачать PDF отчёт по типу письма"""
-        self.ensure_one()
-
-        report_xmlid = self._get_report_by_type('pdf')
-        if not report_xmlid:
-            raise UserError(_("Не найден шаблон отчёта для данного типа письма"))
-
-        report = self.env.ref(report_xmlid, raise_if_not_found=False)
-        if not report:
-            raise UserError(_("Отчёт '%s' не найден") % report_xmlid)
-
-        return report.sudo().report_action(self, data={}, config=False)
-
-    def download_report_docx(self):
-        """Скачать DOCX отчёт по типу письма"""
-        self.ensure_one()
-
-        report_xmlid = self._get_report_by_type('docx')
-        if not report_xmlid:
-            raise UserError(_("Не найден шаблон отчёта для данного типа письма"))
-
-        report = self.env.ref(report_xmlid, raise_if_not_found=False)
-        if not report:
-            raise UserError(_("Отчёт '%s' не найден") % report_xmlid)
-
-        return report.sudo().report_action(self, data={}, config=False)
-
-    
+    # Кнопок «Скачать PDF/DOCX» на форме больше нет: они отдавали
+    # НЕподписанный пере-рендер письма, то есть второй документ рядом с
+    # подписанным. Сами отчёты никуда не делись — они привязаны к модели
+    # (binding_type=report) и доступны из меню «Печать»; подписанное письмо
+    # берётся по ссылке «Скачать печатную версию» на вкладке «Согласующие».
+    #
+    # _get_report_by_type ОСТАЁТСЯ: им пользуется _esp_extra_documents,
+    # чтобы выбрать печатную форму для подписания. Удалить его нельзя.
     # ---------------------------------------------------------
     # Методы для портального подписания (medical_examination)
     # ---------------------------------------------------------
