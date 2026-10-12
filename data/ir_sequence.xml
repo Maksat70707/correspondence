@@ -1,7 +1,18 @@
 <odoo>
+    <!-- implementation=no_gap: счётчик лежит строкой в ir_sequence и берётся
+         под блокировку в той же транзакции, поэтому откат возвращает номер
+         обратно. В режиме standard номер выдаёт postgres-последовательность,
+         а она не транзакционна: любой откат съедал номер и в журнале
+         регистрации появлялась дыра.
+
+         Существующим базам режим переключает migrations/19.0.1.0.3: сделать
+         это только здесь нельзя — ir.sequence.write() при переходе
+         standard -> no_gap дропает postgres-последовательность и НЕ переносит
+         её позицию в number_next, так что нумерация пошла бы заново с единицы. -->
     <record id="seq_correspondence_incoming" model="ir.sequence">
         <field name="name">Incoming Correspondence</field>
         <field name="code">correspondence.incoming</field>
+        <field name="implementation">no_gap</field>
         <field name="prefix">ВХ-</field>
         <field name="suffix">/%(year)s</field>
         <field name="padding">0</field>
@@ -10,6 +21,7 @@
     <record id="seq_correspondence_outgoing" model="ir.sequence">
         <field name="name">Outgoing Correspondence</field>
         <field name="code">correspondence.outgoing</field>
+        <field name="implementation">no_gap</field>
         <field name="prefix">ИСХ-</field>
         <field name="suffix">/%(year)s</field>
         <field name="padding">0</field>
