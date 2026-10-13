@@ -18,7 +18,7 @@
         'hr_employee_extended',  # для получения должности сотрудника
     ],
     # python-docx: подстановка значений в загруженные письма (docx_template.py)
-    'external_dependencies': {'python': ['docx']},
+    'external_dependencies': {'python': ['python-docx']},
     'application': True,
     'installable': True,
     # Начальные настройки ЭЦП этапов: на чистой установке миграции не

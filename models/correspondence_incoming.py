@@ -583,7 +583,16 @@ class IncomingDocument(models.Model):
     # ---------------------------------------------------------
 
     def action_close_document(self):
-        """Закрыть документ без создания заданий (review → done)"""
+        """Закрыть документ без создания заданий (review → done).
+
+        Права проверяются здесь, а не только группами кнопки во вьюхе:
+        метод публичный и пишет статус через sudo, то есть по RPC закрыть
+        письмо мог любой, кто его читает, — например, исполнитель задания.
+        """
+        self._require_any_group([
+            "correspondence.group_correspondence_director",
+            "correspondence.group_correspondence_admin",
+        ])
         self.ensure_one()
         if self.state != 'review':
             raise ValidationError(_("Закрыть можно только на этапе Ознакомление"))
