@@ -83,6 +83,7 @@ DOCX_MIMETYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.
 STABLE_DATE = (1980, 1, 1, 0, 0, 0)
 
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
 
 
 # ----------------------------------------------------------------------
@@ -166,8 +167,16 @@ def _fill_paragraph(paragraph, values, missing):
 
     offset = 0
     for run, text in zip(runs, texts):
-        run.text = "".join(pieces[offset:offset + len(text)])
+        new = "".join(pieces[offset:offset + len(text)])
         offset += len(text)
+        if new == text:
+            continue
+        run.text = new
+        # Без xml:space="preserve" Word отбрасывает пробел на краю узла.
+        # Узел «me}} от» после замены становится « от», а пометки у него не
+        # было — в письме выходило «№ ИСХ-0147от».
+        if new != new.strip():
+            run.set(_XML_SPACE, "preserve")
     return len(spans)
 
 
