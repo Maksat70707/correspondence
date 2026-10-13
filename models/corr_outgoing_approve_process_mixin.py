@@ -55,7 +55,12 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
         if current_user_line:
             return True
 
-        if hasattr(self, "method_on_start"):
+        # Проверки старта согласования (тема, вложение, поля {{...}}) — только
+        # при отправке. При пересборке маршрута после возврата на этап
+        # (_on_return) они уже пройдены, а сбой проверки заблокировал бы сам
+        # возврат: письмо с ошибкой в шаблоне нельзя было бы вернуть на
+        # доработку — ровно тогда, когда это нужно.
+        if hasattr(self, "method_on_start") and not self.env.context.get("corr_route_rebuild"):
             self.method_on_start()
 
         # Получаем need_esp из workflow

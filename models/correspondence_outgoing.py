@@ -1241,14 +1241,21 @@ class OutgoingDocument(models.Model):
 
         Записи согласующих отдаём фреймворку как есть, свои разбираем сами,
         повторяя его же последовательность действий.
-        """
-        action = super()._action_return(state, reason)
 
+        Кто чей — решается ДО вызова фреймворка: после возврата
+        button_approve_enabled считается уже по новому статусу, и запись,
+        которую вернул согласующий-инициатор на промежуточный этап, попадала
+        во вторую ветку и обрабатывалась дважды (вторая активность «возвращён
+        на доработку», повторное аннулирование подписей).
+        """
         by_approver = self.filtered("button_approve_enabled")
         by_initiator = (self - by_approver).filtered(
             lambda r: r.acts_for_initiator
             and r.state in ('under_approval', 'approval', 'approval_medical_examination')
         )
+
+        action = super()._action_return(state, reason)
+
         for record in by_initiator:
             old_state = record.state
             record._remove_approval_activity(action="return", reason=reason)
@@ -1285,6 +1292,18 @@ class OutgoingDocument(models.Model):
         # Очищаем согласующих
         self.sudo().state_agreement_line_ids.unlink()
 
+        # Возврат на промежуточный этап (с Утверждения на Согласование):
+        # фреймворк только переписывает статус, before_script этапа не
+        # выполняется, а строки мы только что удалили — письмо оставалось
+        # на этапе без единого согласующего, и двигать его было некому.
+        # Собираем маршрут этапа заново, как при обычном входе в него.
+        # Активность «на доработку» инициатору в этом случае не ставится:
+        # править ему нечего, письмо ушло к согласующим этапа, а закрыть
+        # такую активность было бы нечем — повторной отправки из Черновика
+        # не будет.
+        if new_state and new_state in dict(self._approval_states()):
+            self.with_context(corr_route_rebuild=True).get_agreement_lines(new_state)
+            return
 
         # Сообщение в чаттер здесь НЕ постим: его публикует
         # appstream_approval/wizard/approval_return_wizard.py:action_return
