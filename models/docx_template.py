@@ -245,6 +245,14 @@ def fill_docx(data, values):
     return _stable_docx(buffer.getvalue()), replaced, missing
 
 
+def _is_docx_name(name, mimetype=None):
+    return mimetype == DOCX_MIMETYPE or (name or "").lower().endswith(".docx")
+
+
+def _is_pdf_name(name, mimetype=None):
+    return mimetype == "application/pdf" or (name or "").lower().endswith(".pdf")
+
+
 # ----------------------------------------------------------------------
 # Миксин для модели документа
 # ----------------------------------------------------------------------
@@ -295,13 +303,11 @@ class DocxTemplateMixin(models.AbstractModel):
 
     @staticmethod
     def _is_docx(attachment):
-        return (attachment.mimetype == DOCX_MIMETYPE
-                or (attachment.name or "").lower().endswith(".docx"))
+        return _is_docx_name(attachment.name, attachment.mimetype)
 
     @staticmethod
     def _is_pdf(attachment):
-        return (attachment.mimetype == "application/pdf"
-                or (attachment.name or "").lower().endswith(".pdf"))
+        return _is_pdf_name(attachment.name, attachment.mimetype)
 
     def check_templates(self):
         """Не пустить документ дальше, если в шаблоне есть незнакомое поле.
@@ -313,36 +319,48 @@ class DocxTemplateMixin(models.AbstractModel):
         for record in self:
             known = record._template_known_names()
             for attachment in record._template_attachments().sudo():
-                if not attachment.datas:
-                    continue
-                if record._is_docx(attachment):
-                    found = scan_docx(base64.b64decode(attachment.datas))
-                elif record._is_pdf(attachment):
-                    found = scan_pdf(base64.b64decode(attachment.datas))
-                    if found:
-                        raise ValidationError(_(
-                            "В файле «%(file)s» есть поля подстановки "
-                            "%(found)s, но это PDF — переписать текст в нём, "
-                            "не сломав вёрстку, нельзя.\n\n"
-                            "Приложите письмо в формате .docx.",
-                            file=attachment.name,
-                            found=", ".join("{{%s}}" % name for name in sorted(found)),
-                        ))
-                    continue
-                else:
-                    continue
-                unknown = sorted(
-                    name for name in found if name.lower() not in known)
-                if not unknown:
-                    continue
-                raise ValidationError(_(
-                    "В файле «%(file)s» есть поля, которых система не знает: "
-                    "%(unknown)s.\n\nДоступные поля: %(known)s",
-                    file=attachment.name,
-                    unknown=", ".join("{{%s}}" % name for name in unknown),
-                    known=", ".join("{{%s}}" % name for name in sorted(known)),
-                ))
+                if attachment.datas:
+                    record._check_template_file(
+                        attachment.name, base64.b64decode(attachment.datas),
+                        attachment.mimetype, known)
         return True
+
+    def _check_template_file(self, filename, raw, mimetype=None, known=None):
+        """Проверка одного файла: незнакомые поля в .docx, любые поля в PDF.
+
+        Отдельно от check_templates, потому что файл на подпись меняют не
+        только в черновике: мастер «Исправить документы» (замечание к
+        подписи) кладёт новый файл прямо в документ на подпись, и он
+        проверяется здесь же — см. models/approval_esp.py.
+        """
+        self.ensure_one()
+        if known is None:
+            known = self._template_known_names()
+        if _is_docx_name(filename, mimetype):
+            found = scan_docx(raw)
+        elif _is_pdf_name(filename, mimetype):
+            found = scan_pdf(raw)
+            if found:
+                raise ValidationError(_(
+                    "В файле «%(file)s» есть поля подстановки "
+                    "%(found)s, но это PDF — переписать текст в нём, "
+                    "не сломав вёрстку, нельзя.\n\n"
+                    "Приложите письмо в формате .docx.",
+                    file=filename,
+                    found=", ".join("{{%s}}" % name for name in sorted(found)),
+                ))
+            return
+        else:
+            return
+        unknown = sorted(name for name in found if name.lower() not in known)
+        if unknown:
+            raise ValidationError(_(
+                "В файле «%(file)s» есть поля, которых система не знает: "
+                "%(unknown)s.\n\nДоступные поля: %(known)s",
+                file=filename,
+                unknown=", ".join("{{%s}}" % name for name in unknown),
+                known=", ".join("{{%s}}" % name for name in sorted(known)),
+            ))
 
     def fill_template(self, raw, filename):
         """Подставить значения в байты документа. None — менять нечего.
