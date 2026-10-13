@@ -21,6 +21,9 @@
     'external_dependencies': {'python': ['docx']},
     'application': True,
     'installable': True,
+    # Начальные настройки ЭЦП этапов: на чистой установке миграции не
+    # выполняются, см. hooks.py
+    'post_init_hook': 'post_init_hook',
     'data': [
         # Security (порядок важен)
         'security/security.xml',
