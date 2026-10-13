@@ -17,6 +17,8 @@
         'website',  # для портальных шаблонов
         'hr_employee_extended',  # для получения должности сотрудника
     ],
+    # python-docx: подстановка значений в загруженные письма (docx_template.py)
+    'external_dependencies': {'python': ['docx']},
     'application': True,
     'installable': True,
     'data': [

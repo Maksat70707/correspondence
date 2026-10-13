@@ -21,6 +21,7 @@ class OutgoingDocument(models.Model):
         "appstream.approval.mixin",
         "corr.outgoing.approve.process.mixin",
         "portal.signing.mixin",
+        "corr.docx.template.mixin",
     ]
     _order = "id desc"
 
@@ -942,6 +943,165 @@ class OutgoingDocument(models.Model):
                 rec.sudo().write(values)
         return self
 
+    # ---------------------------------------------------------
+    # Подстановка значений в загруженное письмо
+    # ---------------------------------------------------------
+
+    # Справочник полей подстановки: (имя, что подставляется, пример) —
+    # из него собирается подсказка исполнителю (кнопка «Поля подстановки»).
+    # Имена совпадают с теми, что стоят в генерируемых печатных формах:
+    # {{ name }}, {{ date }}, {{ signer }}, — чтобы словарь был один и тот
+    # же и в бланках, и в письмах, которые пишут вручную.
+    TEMPLATE_FIELDS = [
+        # регистрация
+        ("name", "Номер исходящего", "ИСХ-2026-0147"),
+        ("date", "Дата письма (она же дата регистрации)", "13.10.2026"),
+        ("today", "Сегодняшняя дата", "13.10.2026"),
+        # о чём письмо
+        ("subject", "Тема", "О предоставлении сведений"),
+        ("summary", "Краткое содержание", "Текст из карточки письма"),
+        ("summary_rus", "Текст письма рус", "Текст письма"),
+        ("summary_kaz", "Текст письма каз", "Хат мәтіні"),
+        ("letter_body", "Текст письма", "Основной текст"),
+        ("mail_subject_rus", "Тема письма рус", "О предоставлении сведений"),
+        ("mail_subject_kaz", "Тема письма каз", "Мәліметтерді ұсыну туралы"),
+        ("language", "Язык письма", "Русский"),
+        ("letter_type", "Тип письма", "Обычное письмо"),
+        # адресат
+        ("where", "Куда", "ТОО «Казгеология»"),
+        ("whom", "Кому", "Генеральному директору"),
+        ("recipient", "Получатели списком", "ТОО «Казгеология», АО «КазМунайГаз»"),
+        ("recipient_person", "ФИО получателей", "Иванов И.И."),
+        ("recipient_position", "Должности получателей", "Генеральный директор"),
+        ("recipient_address", "Адреса получателей", "г. Астана, ул. Кунаева 12"),
+        # письмо, на которое отвечаем
+        ("incoming_number", "Номер входящего", "ВХ-2026-0091"),
+        ("incoming_date", "Дата входящего", "01.10.2026"),
+        ("incoming_external_number", "Исходящий номер отправителя", "04-17/318"),
+        # сотрудник, о котором письмо
+        ("employee", "Сотрудник", "Иванов Иван Иванович"),
+        ("employee_iin", "ИИН сотрудника", "900101300123"),
+        ("employee_job", "Должность сотрудника", "Главный инженер"),
+        ("department", "Подразделение сотрудника", "Производственный отдел"),
+        # исполнитель
+        ("executor", "Исполнитель (создал письмо)", "Петров Пётр Петрович"),
+        ("executor_job", "Должность исполнителя", "Специалист"),
+        ("contact_phone", "Телефон для связи", "+7 777 000 00 00"),
+        ("contact_email", "Почта для связи", "petrov@caspiyneft.kz"),
+        # утверждающий
+        ("signer", "Утверждающий", "Сидоров Сидор Сидорович"),
+        ("signer_job_rus", "Должность утверждающего, рус", "Генеральный директор"),
+        ("signer_job_kaz", "Должность утверждающего, каз", "Бас директор"),
+        ("signer_job_eng", "Должность утверждающего, англ", "General Director"),
+        # организация
+        ("company", "Организация", "ТОО «Каспий нефть»"),
+        ("company_bin", "БИН организации", "123456789012"),
+    ]
+
+    # Второе имя для тех же значений. Нужны, потому что в документообороте
+    # и в черновиках писем прижились другие названия: номер там {{number}},
+    # исполнитель — {{author}}. Проще принимать оба, чем заставлять
+    # переписывать уже готовые письма.
+    TEMPLATE_ALIASES = {
+        "number": "name",
+        "reg_date": "date",
+        "author": "executor",
+        "author_position": "executor_job",
+        "author_phone": "contact_phone",
+        "author_email": "contact_email",
+        "addressee": "recipient",
+        "addressee_full_name": "recipient_person",
+        "position": "employee_job",
+        "signer_position": "signer_job_rus",
+        # в бланке «Шаблонное письмо» исполнитель называется так
+        "create_uid": "executor",
+    }
+
+    def _template_sources(self):
+        """Поля с файлами, которые сотрудник готовит сам: в них и может
+        быть {{...}}. Печатные формы собирает отчёт, им подстановка не нужна."""
+        return ["attachment_to_sign_ids", "attachment_additional_sign_ids"]
+
+    def _template_values(self):
+        """Поля, доступные в загруженном письме.
+
+        Номер, дата и подписант берутся из тех же значений, что и
+        печатные формы, — чтобы в обоих случаях подставлялось одно и то
+        же. Остальное — реквизиты исходящего письма.
+
+        sudo(): должность и ИИН лежат за hr.version, он открыт кадровикам.
+        Исполнитель оформляет письмо на сотрудника и вправе видеть его
+        должность в бланке, но не всю карточку."""
+        self.ensure_one()
+        record = self.sudo()
+        values = dict(record.get_report_values())
+        recipients = self.correspondent_line_ids
+        employee = record.employee_id
+        executor = record.create_uid
+        values.update({
+            "today": fields.Date.context_today(self).strftime('%d.%m.%Y'),
+            "subject": self.subject or "",
+            "language": dict(self._fields["language"]._description_selection(
+                self.env)).get(self.language, "") if self.language else "",
+            "letter_type": self.type_id.name or "",
+            # текст письма
+            "summary_rus": self.summary_rus or "",
+            "summary_kaz": self.summary_kaz or "",
+            "letter_body": self.letter_body or "",
+            "mail_subject_rus": self.mail_subject_rus or "",
+            "mail_subject_kaz": self.mail_subject_kaz or "",
+            # адресат
+            "where": self.where or "",
+            "whom": self.whom or "",
+            "recipient": ", ".join(filter(None, recipients.mapped("name"))),
+            "recipient_person": ", ".join(filter(None, recipients.mapped("full_name"))),
+            "recipient_position": ", ".join(filter(None, recipients.mapped("position"))),
+            "recipient_address": ", ".join(filter(None, recipients.mapped("address"))),
+            # сотрудник, о котором письмо
+            "employee": employee.name or "",
+            "employee_iin": record.employee_identification_id or "",
+            "employee_job": record.employee_job_id.name or "",
+            "department": employee.department_id.name or "",
+            # исполнитель и контакты
+            "executor": executor.name or "",
+            "executor_job": executor.employee_id.job_id.name or "",
+            "contact_phone": self.contact_phone or "",
+            "contact_email": self.contact_email or "",
+            # организация
+            "company": self.env.company.name or "",
+            "company_bin": self.env.company.vat or "",
+            # письмо, на которое отвечаем
+            "incoming_number": record.incoming_id.name or "",
+            "incoming_date": (
+                record.incoming_id.doc_arrival_date.strftime('%d.%m.%Y')
+                if record.incoming_id.doc_arrival_date else ""
+            ),
+            "incoming_external_number": record.incoming_id.external_number or "",
+        })
+        values = {key: ("%s" % value if value else "")
+                  for key, value in values.items()}
+        for alias, canonical in self.TEMPLATE_ALIASES.items():
+            values.setdefault(alias, values.get(canonical, ""))
+        return values
+
+    def _esp_field_sources(self, name):
+        """Подстановка делается здесь — при сборке файла на подпись.
+
+        Меняются только данные, уходящие в подпись: вложение в поле
+        остаётся шаблоном, поэтому после доработки письмо можно отправить
+        ещё раз. Позже менять нечего — байты заморожены первой подписью."""
+        sources = super()._esp_field_sources(name)
+        if name not in self._template_sources():
+            return sources
+        for source in sources:
+            raw = source.get("datas")
+            if not raw:
+                continue
+            filled = self.fill_template(base64.b64decode(raw), source.get("name") or "")
+            if filled:
+                source["datas"] = base64.b64encode(filled)
+        return sources
+
     def _report_number(self):
         """Номер для печатной формы: настоящий, а пока его нет —
         предварительный."""
@@ -981,6 +1141,7 @@ class OutgoingDocument(models.Model):
                     "%(real)s. Документ нужно собрать и подписать заново.",
                     draft=rec.name_draft, real=number))
         return self
+
     def _fix_attachment_ownership(self):
         """Привязывает вложения к записи для корректной работы прав доступа"""
         attachment_fields = ['attachment_to_sign_ids', 'attachment_additional_sign_ids', 'attachment_extra_ids']
@@ -1020,6 +1181,10 @@ class OutgoingDocument(models.Model):
             simple_type = self.env.ref('correspondence.simple', raise_if_not_found=False)
             if rec.type_id == simple_type and not rec.attachment_to_sign_ids:
                 raise ValidationError(_("Прикрепите исходящее письмо для подписания"))
+
+        # Опечатка в поле {{...}} иначе доедет до подписи и закрепится
+        # ЭЦП навсегда: подставлять будем уже в замороженный документ.
+        self.check_templates()
 
     def method_in_middle(self):
         """Валидация перед переходом между промежуточными статусами.
@@ -1400,6 +1565,7 @@ class OutgoingDocument(models.Model):
         }
         values.update(self._report_signer_values())
         return values
+
     def prepare_general_template_report_values(self):
         """Подготовка значений для отчёта «Шаблонное письмо».
 
@@ -1419,6 +1585,7 @@ class OutgoingDocument(models.Model):
             'contact_email': self.contact_email or '',
         })
         return values
+
     def prepare_medical_checkup_report_values(self):
         """Подготавливает данные для DOCX отчёта Направление на медицинский осмотр"""
         self.ensure_one()
@@ -1440,6 +1607,7 @@ class OutgoingDocument(models.Model):
             'medical_tittle': 'НАПРАВЛЕНИЕ НА МЕДИЦИНСКИЙ ОСМОТР' if not self.additional_screenings else 'НАПРАВЛЕНИЕ НА ДОПОЛНИТЕЛЬНЫЕ ОБСЛЕДОВАНИЯ',
         })
         return values
+
     def prepare_explanation_request_report_values(self):
         """Подготавливает данные для DOCX отчёта Требование о письменном объяснении"""
         self.ensure_one()
@@ -1458,6 +1626,7 @@ class OutgoingDocument(models.Model):
             'text_attachments_kaz': self.text_attachments_kaz or '',
         })
         return values
+
     def prepare_medical_assessment_report_values(self):
         """Подготавливает данные для DOCX отчёта Направление на медицинское
         освидетельствование.
@@ -1510,6 +1679,7 @@ class OutgoingDocument(models.Model):
             'medical_assessment_refusal': self.medical_assessment_refusal or '',
         })
         return values
+
     def prepare_job_offer_report_values(self):
         """Подготовка значений для отчёта «Предложение о работе»."""
         self.ensure_one()
@@ -1549,6 +1719,7 @@ class OutgoingDocument(models.Model):
             'employee_id': values['signer'],
         })
         return values
+
     def prepare_reference_letter_report_values(self):
         """Подготовка значений для отчёта «Справка с места работы»."""
         self.ensure_one()
