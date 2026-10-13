@@ -89,21 +89,35 @@ _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 # Чистые функции: работают с байтами файла и словарём значений
 # ----------------------------------------------------------------------
 
-def _iter_paragraph_elements(document):
-    """Все абзацы пакета: тело, таблицы, надписи и колонтитулы.
+def _header_footer_roots(document):
+    """Корневые элементы колонтитулов, которые в документе действительно есть.
 
-    Колонтитулы у разных секций часто связаны и ссылаются на одну часть —
-    повторы отсекаем по id элемента, иначе один абзац обработается дважды.
+    Берутся по связям основной части пакета, а не через section.header и
+    соседей: у python-docx эти свойства при обращении к _element СОЗДАЮТ
+    колонтитул, если у секции его нет (_get_or_add_definition). Обход
+    дописывал в каждое письмо шесть пустых частей header/footer — уже в
+    файл, который уходит под подпись, — а пустой верхний колонтитул на
+    бланке с узким верхним полем сдвигает текст письма вниз.
+
+    Связи части уникальны, поэтому общий для нескольких секций колонтитул
+    встречается здесь один раз.
     """
-    roots, seen = [document.element.body], set()
-    for section in document.sections:
-        for part in (section.header, section.first_page_header, section.even_page_header,
-                     section.footer, section.first_page_footer, section.even_page_footer):
-            element = getattr(part, "_element", None)
-            if element is not None and id(element) not in seen:
-                seen.add(id(element))
-                roots.append(element)
-    for root in roots:
+    from docx.opc.constants import RELATIONSHIP_TYPE as RT
+
+    roots, seen = [], set()
+    for rel in document.part.rels.values():
+        if rel.is_external or rel.reltype not in (RT.HEADER, RT.FOOTER):
+            continue
+        part = rel.target_part
+        if id(part) not in seen:
+            seen.add(id(part))
+            roots.append(part.element)
+    return roots
+
+
+def _iter_paragraph_elements(document):
+    """Все абзацы пакета: тело, таблицы, надписи и колонтитулы."""
+    for root in [document.element.body] + _header_footer_roots(document):
         for paragraph in root.iter(_W + "p"):
             yield paragraph
 
@@ -187,15 +201,21 @@ def scan_docx(data):
 def scan_pdf(data):
     """Имена полей {{...}} в тексте PDF.
 
-    Через PyPDF2 (он есть у appstream_approval — им собираются печатные
-    версии). Сканировать байты файла бессмысленно: содержимое страниц
-    лежит в сжатых потоках.
+    Через pypdf, а где его нет — PyPDF2. Сейчас PyPDF2 есть всегда: без
+    него не загружается сам appstream_approval (esp_copy.py, печатные
+    версии). pypdf — его поддерживаемый преемник, его ставит Odoo 19 на
+    Python 3.13; первая попытка — задел на переход фреймворка. Сканировать
+    байты файла бессмысленно: содержимое страниц лежит в сжатых потоках.
     """
     try:
-        from PyPDF2 import PdfReader
+        from pypdf import PdfReader
     except ImportError:
-        _logger.info("PyPDF2 не установлен — PDF на поля подстановки не проверяется")
-        return set()
+        try:
+            from PyPDF2 import PdfReader
+        except ImportError:
+            _logger.info("Ни pypdf, ни PyPDF2 не установлены — PDF на поля "
+                         "подстановки не проверяется")
+            return set()
     try:
         reader = PdfReader(io.BytesIO(data))
         text = "\n".join(page.extract_text() or "" for page in reader.pages)
