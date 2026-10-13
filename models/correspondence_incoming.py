@@ -252,41 +252,16 @@ class IncomingDocument(models.Model):
         return records
 
     def write(self, vals):
-        import logging
-        _logger = logging.getLogger(__name__)
-        
         # Запоминаем старые состояния — нужны для хука синхронизации
         # execution-активити (Вариант B миграции)
         old_states = {}
         if 'state' in vals:
             old_states = {rec.id: rec.state for rec in self}
-        
-        # Обрабатываем изменения статуса в assignment_line_ids
-        if 'assignment_line_ids' in vals:
-            for cmd in vals['assignment_line_ids']:
-                # cmd[0] = 1 означает обновление существующей записи
-                # cmd = (1, id, {values})
-                if cmd[0] == 1 and len(cmd) == 3:
-                    line_id = cmd[1]
-                    line_vals = cmd[2]
-                    if 'status' in line_vals:
-                        new_status = line_vals['status']
-                        # Получаем запись
-                        line = self.env['correspondence.assignment.line'].browse(line_id)
-                        if line.exists():
-                            _logger.info(f"=== INCOMING WRITE: Изменение статуса задания {line_id} на {new_status} ===")
-                            _logger.info(f"report_needed={line.report_needed}, last_notified_status={line.last_notified_status}")
-                            
-                            # Помечаем для уведомления если нужно
-                            if line.report_needed and new_status in ('in_progress', 'done'):
-                                if line.last_notified_status != new_status:
-                                    _logger.info(f"Помечаю задание {line_id} для уведомления")
-                                    self.env.cr.execute("""
-                                        UPDATE correspondence_assignment_line
-                                        SET needs_notification = TRUE
-                                        WHERE id = %s
-                                    """, (line_id,))
-        
+
+        # Флаг уведомления о смене статуса задания здесь больше не ставится:
+        # правка задания через форму письма приходит в
+        # correspondence.assignment.line.write командой (1, id, vals), и флаг
+        # ставит он — так же, как при правке задания напрямую.
         res = super().write(vals)
         
         # Если изменились вложения — фиксируем ownership

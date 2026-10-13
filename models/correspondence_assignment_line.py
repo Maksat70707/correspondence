@@ -213,41 +213,19 @@ class CorrespondenceAssignmentLine(models.Model):
         string="Документы",
     )
 
-    def write(self, vals):
-        """При изменении статуса помечаем запись для уведомления"""
-        import logging
-        _logger = logging.getLogger(__name__)
-        
-        # Запоминаем какие записи нужно пометить для уведомления
-        records_to_notify_ids = []
-        
-        if 'status' in vals:
-            new_status = vals['status']
-            _logger.info(f"=== WRITE: Изменение статуса на {new_status} для записей {self.ids} ===")
-            
-            for rec in self:
-                _logger.info(f"Запись {rec.id}: report_needed={rec.report_needed}, last_notified_status={rec.last_notified_status}, new_status={new_status}")
-                
-                # Помечаем для уведомления только если report_needed=True
-                # и статус изменился на in_progress или done
-                if rec.report_needed and new_status in ('in_progress', 'done'):
-                    if rec.last_notified_status != new_status:
-                        records_to_notify_ids.append(rec.id)
-                        _logger.info(f"Запись {rec.id} будет помечена для уведомления")
-        
-        # Сохраняем основные изменения
-        result = super().write(vals)
-        
-        # Помечаем записи для уведомления напрямую через SQL чтобы избежать рекурсии
-        if records_to_notify_ids:
-            _logger.info(f"Помечаю записи {records_to_notify_ids} для уведомления через SQL")
-            self.env.cr.execute("""
-                UPDATE correspondence_assignment_line
-                SET needs_notification = TRUE
-                WHERE id IN %s
-            """, (tuple(records_to_notify_ids),))
-        
-        return result
+    def _needs_status_notification(self, new_status):
+        """Нужно ли сообщить назначившему о смене статуса на new_status.
+
+        Сообщение уходит кроном (_cron_send_status_notifications), только по
+        заданиям с отчётом и только о взятии в работу и выполнении — и не
+        повторяется для статуса, о котором уже сообщали.
+        """
+        self.ensure_one()
+        return (
+            self.report_needed
+            and new_status in ("in_progress", "done")
+            and self.last_notified_status != new_status
+        )
 
     @api.model
     def _cron_send_status_notifications(self):
@@ -642,9 +620,17 @@ class CorrespondenceAssignmentLine(models.Model):
                     raise AccessError(
                         _("Вы не можете редактировать чужую задачу."))
 
-        old_user = rec.user_id
         old_status = rec.status
         incoming = rec.incoming_id
+
+        # Флаг для крона уведомлений. Раньше его ставил отдельный write,
+        # объявленный выше в этом же классе: второе объявление метода его
+        # перекрывало, и смена статуса из списка «Мои задания» или из формы
+        # задания назначившему не сообщалась — флаг ставился только при
+        # правке задания через форму входящего письма.
+        # Проверки прав выше уже пройдены, служебное поле добавляем после них.
+        if "status" in vals and rec._needs_status_notification(vals["status"]):
+            vals["needs_notification"] = True
 
         if vals.get("deadline"):
             target_incoming = incoming
