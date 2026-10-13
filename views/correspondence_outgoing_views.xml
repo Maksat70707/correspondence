@@ -270,6 +270,10 @@
                     <group>
                         <group string="Основная информация">
                             <field name="name" readonly="1"/>
+                            <!-- Пока номер не выдан, в печатную форму уходит
+                                 предварительный — показываем его рядом. -->
+                            <field name="name_draft" readonly="1"
+                                   invisible="name and name != '---'"/>
                             <field name="type_id" readonly="state != 'draft'"/>
                             <field name="subject" readonly="state != 'draft'"/>
                             <field name="language" readonly="state != 'draft'"/>

@@ -7,6 +7,10 @@ from markupsafe import Markup
 
 _logger = logging.getLogger(__name__)
 
+# Номер до регистрации. Пока он стоит в name, документ считается
+# незарегистрированным, а в печатную форму уходит name_draft.
+PLACEHOLDER_NUMBER = "---"
+
 class OutgoingDocument(models.Model):
     _name = "corr.outgoing"
     _description = "Исходящая корреспонденция"
@@ -32,12 +36,21 @@ class OutgoingDocument(models.Model):
         tracking=True,
     )
 
+    name_draft = fields.Char(
+        string="Предварительный номер",
+        copy=False,
+        readonly=True,
+        help="Номер, прочитанный при сборке документа на подпись, но ещё "
+             "не выданный. Именно он уходит в печатную форму: настоящий "
+             "номер выдаётся только при сохранении подписи.",
+    )
+
     registration_date = fields.Date(
         string="Дата регистрации",
         copy=False,
         readonly=True,
-        help="Проставляется вместе с номером — в момент подписания ЭЦП. "
-             "Печатается в шапке письма.",
+        help="Проставляется при сборке документа на подпись и закрепляется "
+             "регистрацией. Печатается в шапке письма.",
     )
 
     active = fields.Boolean(
@@ -850,9 +863,10 @@ class OutgoingDocument(models.Model):
     def write(self, vals):
         res = super().write(vals)
 
-        # Номер здесь НЕ присваивается. Триггеры — подписание ЭЦП:
-        # _esp_extra_documents (перед рендером печатной формы),
-        # _esp_after_signature и add_to_history. Все три идемпотентны.
+        # Номер здесь НЕ выдаётся. Выдают его _esp_after_signature и
+        # add_to_history — то есть сохранение подписи ЭЦП; оба идемпотентны.
+        # До этого в печатной форме стоит предварительный номер из
+        # name_draft (_refresh_name_draft при сборке документа на подпись).
         #
         # Раньше здесь стоял `if vals.get('state') == 'processing'`. Это давало
         # два бага: (1) номера ещё нет к моменту, когда он нужен на документе;
@@ -864,31 +878,109 @@ class OutgoingDocument(models.Model):
             self._fix_attachment_ownership()
         return res
 
-    def _assign_document_number(self):
-        """
-        Присваивает номер из последовательности, если он ещё не присвоен.
+    # ---------------------------------------------------------
+    # Номер исходящего письма
+    # ---------------------------------------------------------
+    #
+    # Номер читается при сборке документа на подпись и выдаётся только при
+    # сохранении подписи. Между этими моментами он живёт в name_draft и
+    # именно оттуда попадает в печатную форму.
+    #
+    # Так сделано потому, что документ на подпись замораживается первой
+    # подписью: поменять байты позже нельзя. Выдавать номер при сборке —
+    # значит терять его на каждом закрытом окне подписи и каждом возврате
+    # на доработку, а в журнале регистрации дырок быть не должно.
 
-        Вызывается один раз — при первой ЭЦП-подписи (Утверждающий сотрудник),
-        до брендирования файла.
+    def _number_sequence(self):
+        """Последовательность, из которой берётся номер исходящего."""
+        return self.env["ir.sequence"].sudo().search(
+            [("code", "=", "correspondence.outgoing"),
+             ("company_id", "in", [self.env.company.id, False])],
+            order="company_id", limit=1)
 
-        Идемпотентен: второй и третий подписант в approval_medical_examination
-        номер не меняют и последовательность не расходуют.
+    def _peek_next_number(self):
+        """Следующий номер последовательности БЕЗ его выдачи.
 
-        sudo(): подписант на этапе Утверждения — не обязательно секретарь,
-        а поле name объявлено readonly.
-        """
-        Sequence = self.env["ir.sequence"].sudo()
+        Счётчик не трогается, поэтому закрытое окно подписи, отказ и
+        возврат на доработку номер не расходуют."""
+        self.ensure_one()
+        sequence = self._number_sequence()
+        if not sequence:
+            return False
+        if sequence.use_date_range:
+            # У диапазона свой счётчик, в родительской записи лежит номер
+            # другого года. Сам диапазон создаётся при первой выдаче.
+            today = fields.Date.context_today(self)
+            date_range = sequence.date_range_ids.filtered(
+                lambda rng: rng.date_from <= today <= rng.date_to)[:1]
+            number = date_range.number_next_actual if date_range else 1
+        else:
+            # Именно number_next_actual: у реализации standard колонка
+            # number_next хранит не то, что выдаст последовательность.
+            number = sequence.number_next_actual
+        # Строку собирает сама последовательность — префикс, нули, %(year)s.
+        # Склеить руками значит разойтись с тем, что выдаст next_by_id.
+        return sequence.get_next_char(number)
+
+    def _refresh_name_draft(self):
+        """Обновить предварительный номер и дату перед сборкой документа.
+
+        Дата регистрации проставляется здесь же: в шапке письма печатается
+        именно она, и она должна совпадать в подписанном файле и при
+        повторном скачивании."""
+        today = fields.Date.context_today(self)
         for rec in self:
-            if not rec.name or rec.name == "---":
-                # Дата регистрации проставляется здесь же: в шапке письма
-                # печатается именно она, и она должна совпадать в подписанном
-                # документе и при повторном скачивании.
-                rec.sudo().write({
-                    "name": Sequence.next_by_code("correspondence.outgoing") or "---",
-                    "registration_date": fields.Date.context_today(rec),
-                })
+            if rec.name and rec.name != PLACEHOLDER_NUMBER:
+                continue  # уже зарегистрирован
+            values = {}
+            number = rec._peek_next_number()
+            if number and number != rec.name_draft:
+                values["name_draft"] = number
+            if rec.registration_date != today:
+                values["registration_date"] = today
+            if values:
+                rec.sudo().write(values)
         return self
 
+    def _report_number(self):
+        """Номер для печатной формы: настоящий, а пока его нет —
+        предварительный."""
+        self.ensure_one()
+        if self.name and self.name != PLACEHOLDER_NUMBER:
+            return self.name
+        return self.name_draft or self.name or ""
+
+    def _assign_document_number(self):
+        """Выдаёт номер из последовательности, если он ещё не присвоен.
+
+        Вызывается при сохранении подписи ЭЦП (_esp_after_signature) и из
+        add_to_history. Идемпотентен: второй и третий подписант номер не
+        меняют и последовательность не расходуют.
+
+        Выданный номер сверяется с тем, что ушёл в подписанный файл: файл
+        к этому моменту заморожен, и расхождение иначе уехало бы в архив
+        незамеченным. Разойтись они могут, если между сборкой документа и
+        подписанием номер забрало другое письмо — тем вероятнее, чем
+        дольше пауза, а на портале она бывает долгой.
+
+        sudo(): подписант на этапе Утверждения — не обязательно секретарь,
+        а name и registration_date объявлены readonly."""
+        today = fields.Date.context_today(self)
+        for rec in self:
+            if rec.name and rec.name != PLACEHOLDER_NUMBER:
+                continue
+            sequence = rec._number_sequence()
+            number = sequence.next_by_id() if sequence else False
+            rec.sudo().write({
+                "name": number or PLACEHOLDER_NUMBER,
+                "registration_date": rec.registration_date or today,
+            })
+            if number and rec.name_draft and number != rec.name_draft:
+                rec.message_post(body=_(
+                    "В документе на подпись номер %(draft)s, а зарегистрирован "
+                    "%(real)s. Документ нужно собрать и подписать заново.",
+                    draft=rec.name_draft, real=number))
+        return self
     def _fix_attachment_ownership(self):
         """Привязывает вложения к записи для корректной работы прав доступа"""
         attachment_fields = ['attachment_to_sign_ids', 'attachment_additional_sign_ids', 'attachment_extra_ids']
@@ -1302,7 +1394,7 @@ class OutgoingDocument(models.Model):
         """Значения, общие для всех печатных форм."""
         self.ensure_one()
         values = {
-            'name': self.name,
+            'name': self._report_number(),
             'date': self._report_letter_date(),
             'summary': self.summary or '',
         }
@@ -1639,7 +1731,13 @@ class OutgoingDocument(models.Model):
     def _esp_document_fields(self, line=None):
         """У писем с печатной формой загруженный файл письма не подписывается:
         подписывается сформированный отчёт. Дополнительные документы
-        подписываются всегда."""
+        подписываются всегда.
+
+        Заодно это самая ранняя точка сборки документа на подпись —
+        фреймворк зовёт её при каждом открытии окна подписи, до того как
+        файл сформирован. Здесь и обновляем предварительный номер: позже
+        байты уже заморожены первой подписью."""
+        self._refresh_name_draft()
         names = super()._esp_document_fields(line)
         if self._esp_has_printed_form():
             names = [name for name in names if name != 'attachment_to_sign_ids']
@@ -1652,12 +1750,9 @@ class OutgoingDocument(models.Model):
         documents = super()._esp_extra_documents()
         if not self._esp_has_printed_form():
             return documents
-        # Номер присваиваем ДО рендера. Во всех шаблонах есть {{ name }}, а
-        # документ замораживается первой подписью — присвоить номер только
-        # в _esp_after_signature значило бы подписать письмо с «---» в
-        # номере. Метод идемпотентен, так что повторные открытия окна
-        # подписи последовательность не расходуют.
-        self._assign_document_number()
+        # Номер здесь НЕ выдаётся: в шаблон уходит предварительный из
+        # name_draft (его обновил _esp_document_fields). Иначе каждое
+        # открытие окна подписи, закрытое без подписи, съедало бы номер.
         for output_format in ('pdf', 'docx'):
             xmlid = self._get_report_by_type(output_format)
             report = xmlid and self.env.ref(xmlid, raise_if_not_found=False)
