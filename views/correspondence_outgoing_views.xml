@@ -318,18 +318,22 @@
                     <!-- ========================================= -->
                     <!-- Вложения                                  -->
                     <!-- ========================================= -->
+                    <!-- Какие {{поля}} можно вставить в письмо. Кнопка стоит
+                         ВНЕ <group>: внутри группы она занимает ячейку сетки
+                         «метка — поле» и сдвигает все последующие пары — поля
+                         уезжали в левую колонку, а их подписи в правую.
+                         invisible висит на <div>, иначе вне черновика
+                         оставался бы пустой отступ. -->
+                    <div class="mb-2" invisible="state not in ['draft']">
+                        <button name="action_show_template_fields"
+                                string="Поля подстановки"
+                                type="object"
+                                class="btn-link ps-0"
+                                icon="fa-question-circle-o"/>
+                    </div>
+
                     <group>
                         <group string="Вложения">
-                            <!-- Какие {{поля}} можно вставить в письмо.
-                                 Без подсказки исполнитель узнаёт имена
-                                 полей только из отказа при отправке. -->
-                            <button name="action_show_template_fields"
-                                    string="Поля подстановки"
-                                    type="object"
-                                    class="btn-link ps-0"
-                                    icon="fa-question-circle-o"
-                                    invisible="state not in ['draft']"/>
-
                             <field name="attachment_to_sign_ids"
                                    widget="many2many_binary"
                                    string="Исходящее письмо для подписания"
