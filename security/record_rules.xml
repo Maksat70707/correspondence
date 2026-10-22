@@ -76,11 +76,17 @@
          ИЛИ отдельно для каждой операции, поэтому здесь включено только чтение.
 
          member_ids ведёт на hr.employee; без карточки сотрудника или без
-         подразделения список выйдет пустым и правило просто ничего не добавит. -->
+         подразделения список выйдет пустым и правило просто ничего не добавит.
+
+         Конфиденциальные письма подразделению не открываются: их видят
+         только участники (правило выше) и роли с полным доступом. -->
     <record id="rule_corr_outgoing_employee_department" model="ir.rule">
-        <field name="name">Outgoing: Employee reads own department letters</field>
+        <field name="name">Outgoing: Employee reads own department letters (not confidential)</field>
         <field name="model_id" ref="model_corr_outgoing"/>
-        <field name="domain_force">[('create_uid', 'in', user.employee_id.department_id.member_ids.user_id.ids)]</field>
+        <field name="domain_force">[
+            ('is_confidential', '=', False),
+            ('create_uid', 'in', user.employee_id.department_id.member_ids.user_id.ids),
+        ]</field>
         <field name="groups" eval="[(4, ref('correspondence.group_correspondence_employee'))]"/>
         <field name="perm_read" eval="True"/>
         <field name="perm_write" eval="False"/>

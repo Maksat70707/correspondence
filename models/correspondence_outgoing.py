@@ -98,6 +98,23 @@ class OutgoingDocument(models.Model):
         tracking=True,
     )
 
+    # Закрывает письмо от своего подразделения: снимает только правило
+    # rule_corr_outgoing_employee_department. Участники письма (автор,
+    # согласующие, утверждающий) и роли с полным доступом (секретарь,
+    # директор, администратор) видят его, как и раньше. Менять отметку
+    # может автор (или его заместитель) и администратор — см. write.
+    is_confidential = fields.Boolean(
+        string="Конфиденциально",
+        tracking=True,
+        help="Письмо не видно коллегам по подразделению. Его видят только "
+             "автор, согласующие и утверждающий, а также секретарь, директор "
+             "и администратор корреспонденции.",
+    )
+    can_change_confidential = fields.Boolean(
+        string="Может менять «Конфиденциально»",
+        compute="_compute_can_change_confidential",
+    )
+
     correspondent_line_ids = fields.One2many(
         "correspondence.correspondent.line",
         "outgoing_id",
@@ -773,6 +790,24 @@ class OutgoingDocument(models.Model):
             ))
 
     @api.depends_context("uid")
+    @api.depends("create_uid")
+    def _compute_can_change_confidential(self):
+        for rec in self:
+            rec.can_change_confidential = rec._can_change_confidential()
+
+    def _can_change_confidential(self):
+        """Отметку «Конфиденциально» меняет автор письма или тот, кто его
+        замещает, и администратор корреспонденции.
+
+        Согласующие письмо правят, но снимать отметку им нельзя: так
+        начальник открыл бы чужое письмо всему подразделению.
+        """
+        self.ensure_one()
+        if self.env.su or self.env.user.has_group("correspondence.group_correspondence_admin"):
+            return True
+        return self.acts_for_initiator
+
+    @api.depends_context("uid")
     @api.depends("state", "acts_for_initiator")
     def _compute_can_cancel(self):
         """
@@ -862,6 +897,8 @@ class OutgoingDocument(models.Model):
         return records
 
     def write(self, vals):
+        if "is_confidential" in vals:
+            self._check_change_confidential(bool(vals["is_confidential"]))
         res = super().write(vals)
 
         # Номер здесь НЕ выдаётся. Выдают его _esp_after_signature и
@@ -878,6 +915,18 @@ class OutgoingDocument(models.Model):
         if 'attachment_to_sign_ids' in vals or 'attachment_additional_sign_ids' in vals or 'attachment_extra_ids' in vals:
             self._fix_attachment_ownership()
         return res
+
+    def _check_change_confidential(self, value):
+        """Проверка на сервере: форма лишь прячет флажок, а писать письмо
+        правило доступа даёт и согласующим."""
+        denied = self.filtered(
+            lambda rec: rec.is_confidential != value and not rec._can_change_confidential()
+        )
+        if denied:
+            raise UserError(_(
+                "Отметку «Конфиденциально» меняет автор письма (или тот, кто "
+                "его замещает) и администратор корреспонденции: %s"
+            ) % ", ".join(denied.mapped("display_name")))
 
     # ---------------------------------------------------------
     # Номер исходящего письма
@@ -1377,6 +1426,7 @@ class OutgoingDocument(models.Model):
         В context передаём:
           - default_parent_outgoing_id = self.id (связать новый follow-up с этим)
           - default_incoming_id = self.incoming_id.id (наследовать источник)
+          - default_is_confidential — конфиденциальность предыдущего письма
         """
         self.ensure_one()
         action = {
@@ -1387,6 +1437,8 @@ class OutgoingDocument(models.Model):
             "context": {
                 "default_parent_outgoing_id": self.id,
                 "default_incoming_id": self.incoming_id.id,
+                # Продолжение конфиденциальной переписки — тоже конфиденциально.
+                "default_is_confidential": self.is_confidential,
             },
         }
         if self.follow_up_outgoing_count == 1:
@@ -1399,7 +1451,8 @@ class OutgoingDocument(models.Model):
     def action_create_follow_up_outgoing(self):
         """
         Открывает новую форму исходящего как follow-up к текущему.
-        Заполняет parent_outgoing_id (текущее) и наследует incoming_id.
+        Заполняет parent_outgoing_id (текущее), наследует incoming_id и
+        отметку «Конфиденциально».
         """
         self.ensure_one()
         return {
@@ -1411,6 +1464,8 @@ class OutgoingDocument(models.Model):
             "context": {
                 "default_parent_outgoing_id": self.id,
                 "default_incoming_id": self.incoming_id.id,
+                # Продолжение конфиденциальной переписки — тоже конфиденциально.
+                "default_is_confidential": self.is_confidential,
             },
         }
 

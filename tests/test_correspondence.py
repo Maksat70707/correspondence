@@ -157,6 +157,38 @@ class TestCorrespondence(TransactionCase):
         self.assertIn(rec, _u(Out).with_user(self.colleague).search([("is_my_department", "=", True)]))
         self.assertNotIn(rec, _u(Out).with_user(self.executor).search([]))
 
+    def test_06a_confidential_hidden_from_department(self):
+        """«Конфиденциально» закрывает письмо от подразделения, но не от
+        участников и ролей с полным доступом."""
+        rec = self._new_outgoing()
+        _u(rec).with_user(self.init).write({"is_confidential": True})
+        Out = self.env["corr.outgoing"]
+        self.assertNotIn(rec, _u(Out).with_user(self.colleague).search([]))
+        self.assertNotIn(rec, _u(Out).with_user(self.colleague).search(
+            [("is_my_department", "=", True)]))
+        with self.assertRaises(AccessError):
+            _u(rec).with_user(self.colleague).check_access("read")
+        for user in (self.init, self.secretary, self.director):
+            self.assertIn(rec, _u(Out).with_user(user).search([]), user.name)
+        # начальник — согласующий: видит, хотя он из того же подразделения
+        _u(rec).with_user(self.init).action_send_to_approval()
+        self.assertEqual(rec.state_agreement_line_ids.user_id, self.boss)
+        self.assertIn(rec, _u(Out).with_user(self.boss).search([]))
+        # снять отметку согласующий не может, автор — может
+        self.assertFalse(_u(rec).with_user(self.boss).can_change_confidential)
+        with self.assertRaises(UserError):
+            _u(rec).with_user(self.boss).write({"is_confidential": False})
+        self.assertTrue(_u(rec).with_user(self.init).can_change_confidential)
+        _u(rec).with_user(self.init).write({"is_confidential": False})
+        self.assertIn(rec, _u(Out).with_user(self.colleague).search([]))
+
+    def test_06b_follow_up_keeps_confidential(self):
+        rec = self._new_outgoing()
+        _u(rec).with_user(self.init).write({"is_confidential": True})
+        for method in ("action_create_follow_up_outgoing", "action_view_follow_up_outgoing"):
+            action = getattr(_u(rec).with_user(self.init), method)()
+            self.assertTrue(action["context"]["default_is_confidential"], method)
+
     def test_07_forms_open(self):
         rec = self._new_outgoing()
         _u(rec).with_user(self.init).action_send_to_approval()

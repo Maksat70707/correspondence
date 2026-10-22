@@ -19,6 +19,7 @@
                 <field name="create_date" string="Дата создания"/>
                 <field name="current_approver_ids" widget="many2many_tags"
                        string="Текущие согласующие"/>
+                <field name="is_confidential" optional="hide"/>
                 <field name="state" widget="badge" 
                        decoration-info="state == 'draft'" 
                        decoration-warning="state in ('under_approval', 'approval', 'approval_medical_examination', 'processing')"
@@ -41,6 +42,7 @@
                 <field name="subject"/>
                 <field name="create_uid"/>
                 <field name="state"/>
+                <field name="is_confidential"/>
                 <templates>
                     <t t-name="card">
                         <div t-attf-class="oe_kanban_global_click">
@@ -58,6 +60,9 @@
                                 </div>
                                 <div>Тема: <field name="subject"/></div>
                                 <div>Инициатор: <field name="create_uid"/></div>
+                                <div t-if="record.is_confidential.raw_value" class="text-muted">
+                                    <i class="fa fa-lock" title="Конфиденциально"/> Конфиденциально
+                                </div>
                             </div>
                         </div>
                     </t>
@@ -277,6 +282,13 @@
                             <field name="type_id" readonly="state != 'draft'"/>
                             <field name="subject" readonly="state != 'draft'"/>
                             <field name="language" readonly="state != 'draft'"/>
+                            <!-- Отметку меняет автор (или заместитель) и
+                                 администратор в любом статусе: закрыть письмо
+                                 от подразделения может понадобиться и позже.
+                                 Новое письмо (без id) — автор сам. -->
+                            <field name="can_change_confidential" invisible="1"/>
+                            <field name="is_confidential"
+                                   readonly="id and not can_change_confidential"/>
                             <field name="incoming_id" readonly="1" invisible="not incoming_id"/>
                             <field name="parent_outgoing_id" readonly="1" invisible="not parent_outgoing_id"/>
                             <field name="create_uid" string="Инициатор" readonly="1"/>
@@ -565,6 +577,8 @@
                         domain="[('create_uid', '=', uid)]"/>
                 <filter string="Моё подразделение" name="my_department"
                         domain="[('is_my_department', '=', True)]"/>
+                <filter string="Конфиденциальные" name="confidential"
+                        domain="[('is_confidential', '=', True)]"/>
                 <separator/>
                 <filter string="Черновик" name="state_draft" domain="[('state', '=', 'draft')]"/>
                 <filter string="Согласование" name="state_under_approval" domain="[('state', '=', 'under_approval')]"/>
