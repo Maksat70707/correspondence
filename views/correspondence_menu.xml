@@ -138,7 +138,7 @@
         id="menu_correspondence_resolution_option"
         name="Резолюции"
         parent="menu_correspondence_settings"
-        action="action_resolution_option"
+        action="assignment.action_assignment_resolution"
         sequence="10"
         groups="correspondence.group_correspondence_admin"
     />

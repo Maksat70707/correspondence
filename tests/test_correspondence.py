@@ -1,7 +1,8 @@
 import base64
+from datetime import timedelta
 
 from odoo import Command, fields
-from odoo.exceptions import AccessError, ValidationError
+from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests import Form, TransactionCase, new_test_user, tagged
 
 from .common import _u, docx_t_nodes, b64, docx_parts, docx_text, make_docx
@@ -107,9 +108,9 @@ class TestCorrespondence(TransactionCase):
         inc = _u(self.env["corr.incoming"]).with_user(self.secretary).create({
             "subject": "Вх", "summary": "Суть", "doc_arrival_date": fields.Date.today(),
         })
-        line = _u(self.env["correspondence.assignment.line"]).with_user(self.secretary).create({
+        line = _u(self.env["assignment.line"]).with_user(self.secretary).create({
             "incoming_id": inc.id, "user_id": self.executor.id,
-            "resolution_id": self.env.ref("correspondence.correspondence_res_01").id,
+            "resolution_id": self.env.ref("assignment.resolution_01").id,
             "report_needed": True,
         })
         _u(line).with_user(self.executor).write({"status": "in_progress"})
@@ -126,9 +127,9 @@ class TestCorrespondence(TransactionCase):
         _u(inc).with_user(self.secretary).action_send_to_approval()
         self.assertEqual(inc.state, "review")
         self.assertEqual(inc.state_agreement_line_ids.user_id, self.director)
-        _u(self.env["correspondence.assignment.line"]).with_user(self.director).create({
+        _u(self.env["assignment.line"]).with_user(self.director).create({
             "incoming_id": inc.id, "user_id": self.executor.id,
-            "resolution_id": self.env.ref("correspondence.correspondence_res_01").id,
+            "resolution_id": self.env.ref("assignment.resolution_01").id,
         })
         self._approve(inc, self.director)
         self.assertEqual(inc.state, "execution")
@@ -142,9 +143,9 @@ class TestCorrespondence(TransactionCase):
             "subject": "Вх", "summary": "Суть", "doc_arrival_date": fields.Date.today(),
         })
         inc.sudo().state = "review"
-        _u(self.env["correspondence.assignment.line"]).with_user(self.secretary).create({
+        _u(self.env["assignment.line"]).with_user(self.secretary).create({
             "incoming_id": inc.id, "user_id": self.executor.id,
-            "resolution_id": self.env.ref("correspondence.correspondence_res_01").id,
+            "resolution_id": self.env.ref("assignment.resolution_01").id,
         })
         with self.assertRaises(AccessError):
             _u(inc).with_user(self.executor).action_close_document()
@@ -261,3 +262,60 @@ class TestCorrespondence(TransactionCase):
         filled = rec.fill_template(raw, "x.docx")
         bad = [t for t, preserved in docx_t_nodes(filled) if t != t.strip() and not preserved]
         self.assertFalse(bad, "узлы с пробелом по краю без xml:space=preserve: %r" % bad)
+
+    # ------------------------------------------------------------------
+    # Поручения (модуль assignment)
+    # ------------------------------------------------------------------
+    def _incoming_with_task(self):
+        inc = _u(self.env["corr.incoming"]).with_user(self.secretary).create({
+            "subject": "Вх", "summary": "Суть письма", "doc_arrival_date": fields.Date.today(),
+        })
+        line = _u(self.env["assignment.line"]).with_user(self.secretary).create({
+            "incoming_id": inc.id, "user_id": self.executor.id,
+            "resolution_id": self.env.ref("assignment.resolution_01").id,
+            "deadline": fields.Date.today() + timedelta(days=400),
+        })
+        return inc, line
+
+    def test_30_assignment_from_incoming(self):
+        """Поручение по письму: срок не позже предела письма, задача
+        исполнителю на письме, поручение видно по «Источнику»."""
+        inc, line = self._incoming_with_task()
+        self.assertEqual(line.document_model, "corr.incoming")
+        self.assertEqual(line.deadline, inc.deadline_limit_date, "срок сокращён до предела письма")
+        self.assertEqual(inc.assignment_count, 1)
+        self.assertEqual(inc.assignment_open_count, 1)
+        self.assertEqual(line.document_summary, "Суть письма")
+        # исполнитель видит поручение и письмо
+        _u(inc).with_user(self.executor).check_access("read")
+        self.assertTrue(_u(self.env["assignment.line"]).with_user(self.executor).search(
+            [("id", "=", line.id)]))
+        # директор правит любое поручение по входящим
+        _u(line).with_user(self.director).write({"task": "Уточнение"})
+
+    def test_31_rework_wizard(self):
+        """Доработка задач — общий мастер «Поручить» с причиной."""
+        inc, line = self._incoming_with_task()
+        inc.sudo().state = "done"
+        action = _u(inc).with_user(self.secretary).action_open_rework_wizard()
+        self.assertEqual(action["res_model"], "assignment.wizard")
+        self.assertEqual(action["views"][0][0],
+                         self.env.ref("correspondence.view_correspondence_rework_wizard_form").id)
+        Wizard = _u(self.env["assignment.wizard"]).with_user(self.secretary).with_context(action["context"])
+        wizard = Wizard.create({
+            "line_ids": [Command.create({
+                "user_id": self.executor.id,
+                "resolution_id": self.env.ref("assignment.resolution_02").id,
+                "deadline": fields.Date.today(),
+            })],
+        })
+        self.assertTrue(wizard.note_required)
+        with self.assertRaises(UserError):
+            wizard.action_confirm()
+        wizard.note = "Ответ неполный"
+        wizard.action_confirm()
+        self.assertEqual(inc.state, "rework")
+        self.assertEqual(len(inc.assignment_line_ids), 2)
+        # исполнитель не может отправлять на доработку
+        with self.assertRaises(AccessError):
+            _u(inc).with_user(self.executor).action_open_rework_wizard()

@@ -13,8 +13,7 @@ from . import approval_esp
 # Затем основные модели
 from . import correspondence_incoming
 from . import correspondence_outgoing
-from . import correspondence_assignment_line
-from . import correspondence_resolution_option
+from . import assignment_line
 from . import correspondence_shipment_method
 from . import correspondence_outgoing_type_esp_signer
 from . import correspondence_correspondent_line

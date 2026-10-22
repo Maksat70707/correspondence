@@ -112,13 +112,16 @@
     </record>
 
     <!-- ============================================== -->
-    <!-- Правила для correspondence.assignment.line    -->
+    <!-- Правила для поручений (assignment.line)       -->
     <!-- ============================================== -->
+    <!-- Свои поручения (исполнитель, назначивший, прежний исполнитель)
+         открывает правило модуля assignment. Здесь — поручения по
+         входящим: правила разных групп складываются по ИЛИ. -->
 
-    <!-- Employee: доступ к заданиям где он исполнитель, назначил, бывший исполнитель, или через incoming document -->
+    <!-- Employee: поручения писем, где он автор или исполнитель -->
     <record id="rule_assignment_line_employee" model="ir.rule">
         <field name="name">Assignment: Employee access (executor, assigner, history or via incoming)</field>
-        <field name="model_id" ref="model_correspondence_assignment_line"/>
+        <field name="model_id" ref="assignment.model_assignment_line"/>
         <field name="domain_force">[
             '|', '|', '|', '|', '|',
             ('user_id', '=', user.id),
@@ -135,27 +138,27 @@
         <field name="perm_unlink" eval="False"/>
     </record>
 
-    <!-- Secretary: полный доступ ко всем заданиям -->
+    <!-- Секретарь, директор, администратор — все поручения по входящим и
+         поручения без документа. Поручения других модулей (документооборот)
+         открывают их модули. -->
     <record id="rule_assignment_line_secretary" model="ir.rule">
         <field name="name">Assignment: Secretary full access</field>
-        <field name="model_id" ref="model_correspondence_assignment_line"/>
-        <field name="domain_force">[(1,'=',1)]</field>
+        <field name="model_id" ref="assignment.model_assignment_line"/>
+        <field name="domain_force">[('document_model', 'in', [False, 'corr.incoming'])]</field>
         <field name="groups" eval="[(4, ref('correspondence.group_correspondence_secretary'))]"/>
     </record>
 
-    <!-- Director: полный доступ ко всем заданиям -->
     <record id="rule_assignment_line_director" model="ir.rule">
         <field name="name">Assignment: Director full access</field>
-        <field name="model_id" ref="model_correspondence_assignment_line"/>
-        <field name="domain_force">[(1,'=',1)]</field>
+        <field name="model_id" ref="assignment.model_assignment_line"/>
+        <field name="domain_force">[('document_model', 'in', [False, 'corr.incoming'])]</field>
         <field name="groups" eval="[(4, ref('correspondence.group_correspondence_director'))]"/>
     </record>
 
-    <!-- Admin: полный доступ ко всем заданиям -->
     <record id="rule_assignment_line_admin" model="ir.rule">
         <field name="name">Assignment: Admin full access</field>
-        <field name="model_id" ref="model_correspondence_assignment_line"/>
-        <field name="domain_force">[(1,'=',1)]</field>
+        <field name="model_id" ref="assignment.model_assignment_line"/>
+        <field name="domain_force">[('document_model', 'in', [False, 'corr.incoming'])]</field>
         <field name="groups" eval="[(4, ref('correspondence.group_correspondence_admin'))]"/>
     </record>
 

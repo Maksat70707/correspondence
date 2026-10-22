@@ -13,6 +13,7 @@ class IncomingDocument(models.Model):
         "corr.approval.activity.dedup.mixin",
         "appstream.approval.mixin",
         "corr.incoming.approve.process.mixin",
+        "assignment.document.mixin",
     ]
     _order = "id desc"
 
@@ -117,21 +118,13 @@ class IncomingDocument(models.Model):
         string="Документы от отправителя",
     )
 
+    # Поручения — модуль assignment; счётчик assignment_count — из его
+    # миксина, поведение письма — хуки _assignment_* ниже
     assignment_line_ids = fields.One2many(
-        "correspondence.assignment.line",
+        "assignment.line",
         "incoming_id",
         string="Задания",
     )
-
-    assignment_count = fields.Integer(
-        string="Количество заданий",
-        compute="_compute_assignment_count",
-    )
-
-    @api.depends("assignment_line_ids")
-    def _compute_assignment_count(self):
-        for rec in self:
-            rec.assignment_count = len(rec.assignment_line_ids)
 
 # Связанные исходящие письма (созданные из этого входящего)
     outgoing_ids = fields.One2many(
@@ -259,9 +252,9 @@ class IncomingDocument(models.Model):
             old_states = {rec.id: rec.state for rec in self}
 
         # Флаг уведомления о смене статуса задания здесь больше не ставится:
-        # правка задания через форму письма приходит в
-        # correspondence.assignment.line.write командой (1, id, vals), и флаг
-        # ставит он — так же, как при правке задания напрямую.
+        # правка задания через форму письма приходит в assignment.line.write
+        # командой (1, id, vals), и флаг ставит он — так же, как при правке
+        # задания напрямую.
         res = super().write(vals)
         
         # Если изменились вложения — фиксируем ownership
@@ -380,8 +373,8 @@ class IncomingDocument(models.Model):
         поручений на этом документе.
 
         Вызывается из:
-        - correspondence.assignment.line.create() — на добавление строки
-        - correspondence.assignment.line.write() — на смену user_id/status
+        - assignment.line.create() — на добавление строки (_assignment_lines_created)
+        - assignment.line.write() — на смену user_id/status (_assignment_line_written)
         - corr_incoming_approve_process_mixin._create_activity_for_user() при
           notif_type="execution" — на переход документа в execution
 
@@ -481,27 +474,20 @@ class IncomingDocument(models.Model):
         return self.with_context(fixed_return_state='draft').action_return()
 
     def action_open_rework_wizard(self):
-        """Открыть визард для отправки на доработку задач"""
-        self._require_any_group([
-            "correspondence.group_correspondence_director",
-            "correspondence.group_correspondence_admin",
-            "correspondence.group_correspondence_secretary",
-        ])
+        """Отправка на доработку задач — общий мастер «Поручить» модуля
+        assignment в форме корреспонденции: причина обязательна, кнопка
+        «Отправить на доработку». Подтверждение приходит в
+        _assignment_wizard_confirm."""
         self.ensure_one()
+        self._assignment_check_can_assign()
         if self.state != "done":
             raise UserError(
                 _("На доработку задач можно отправить только из Завершено."))
-
-        return {
-            "type": "ir.actions.act_window",
-            "name": _("Отправка на доработку задач"),
-            "res_model": "correspondence.rework.wizard",
-            "view_mode": "form",
-            "target": "new",
-            "context": {
-                "default_incoming_id": self.id,
-            },
-        }
+        return self._assignment_wizard_action(
+            _("Отправка на доработку задач"),
+            view_xmlid="correspondence.view_correspondence_rework_wizard_form",
+            context={"default_note_required": True},
+        )
 
     def action_send_to_rework(self, reason, tasks):
         """
@@ -519,10 +505,11 @@ class IncomingDocument(models.Model):
 
         # Создаём новые задания
         for t in tasks or []:
-            self.env["correspondence.assignment.line"].create({
+            self.env["assignment.line"].create({
                 "incoming_id": self.id,
                 "user_id": t["user_id"],
                 "resolution_id": t["resolution_id"],
+                "task": t.get("task") or False,
                 "deadline": t.get("deadline"),
                 "report_needed": t.get("report_needed", False),
             })
@@ -619,3 +606,60 @@ class IncomingDocument(models.Model):
         """Проверяет, можно ли редактировать задания на текущем этапе"""
         # Задания можно редактировать на всех этапах кроме done
         return self.state != 'done'
+
+    # ---------------------------------------------------------
+    # Поручения (модуль assignment): хуки документа
+    # ---------------------------------------------------------
+
+    def _assignment_deadline_limit(self):
+        return self.deadline_limit_date
+
+    def _assignment_deadline_limit_message(self, limit):
+        return _(
+            "Задачи по входящему письму должны быть выполнены в "
+            "течение %(days)s дней с даты его регистрации, поэтому "
+            "срок установлен на %(limit)s."
+        ) % {
+            "days": self._get_assignment_deadline_max_days(),
+            "limit": limit.strftime("%d.%m.%Y"),
+        }
+
+    def _assignment_user_can_manage(self):
+        user = self.env.user
+        return user.has_group("correspondence.group_correspondence_director") \
+            or user.has_group("correspondence.group_correspondence_admin")
+
+    def _assignment_notification_label(self):
+        return _("от входящего письма")
+
+    def _assignment_summary(self):
+        return self.sudo().summary
+
+    def _assignment_lines_created(self, lines):
+        # одна execution-активити на пару (письмо, исполнитель) — Вариант B
+        for rec in self:
+            rec._sync_execution_activities()
+
+    def _assignment_line_written(self, line, vals, old_status):
+        self.ensure_one()
+        if "user_id" in vals or "status" in vals:
+            self._sync_execution_activities()
+        # Письмо закрывается само, когда все задания выполнены или отменены.
+        # Только на переходе задания в конечный статус — не на каждой правке.
+        terminal = ("done", "cancelled")
+        if (old_status not in terminal and vals.get("status") in terminal
+                and self.state in ("execution", "rework")
+                and all(item.status in terminal for item in self.assignment_line_ids)):
+            self._auto_transition_to_done()
+
+    def _assignment_check_can_assign(self):
+        self._require_any_group([
+            "correspondence.group_correspondence_director",
+            "correspondence.group_correspondence_admin",
+            "correspondence.group_correspondence_secretary",
+        ])
+
+    def _assignment_wizard_confirm(self, tasks, note):
+        """Мастер во входящем — это отправка задач на доработку."""
+        self.action_send_to_rework(note, tasks)
+        return {"type": "ir.actions.act_window_close"}
