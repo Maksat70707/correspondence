@@ -325,6 +325,21 @@ class TestCorrespondence(TransactionCase):
         # директор правит любое поручение по входящим
         _u(line).with_user(self.director).write({"task": "Уточнение"})
 
+    def test_30a_assignment_app(self):
+        """Приложение «Поручения»: директор видит отчётность и все поручения
+        по входящим, исполнитель — своё."""
+        inc, line = self._incoming_with_task()
+        Menu = self.env["ir.ui.menu"]
+        report = self.env.ref("assignment.menu_assignment_report")
+        visible = Menu.browse(_u(Menu).with_user(self.director)._visible_menu_ids())
+        self.assertIn(report, visible)
+        self.assertIn(self.env.ref("assignment.menu_assignment_reports"), visible)
+        self.assertNotIn(report, Menu.browse(_u(Menu).with_user(self.executor)._visible_menu_ids()))
+        Line = self.env["assignment.line"]
+        self.assertIn(line, _u(Line).with_user(self.director).search([]))
+        self.assertIn(line, _u(Line).with_user(self.executor).search(
+            [("user_id", "=", self.executor.id)]))
+
     def test_31_rework_wizard(self):
         """Доработка задач — общий мастер «Поручить» с причиной."""
         inc, line = self._incoming_with_task()
@@ -424,3 +439,23 @@ class TestCorrespondence(TransactionCase):
         self.assertIn("Получатель", text)
         self.assertIn("сверку", text)
         self.assertIn("Предпросмотр", text)
+
+    def test_42_templates_without_kazakh_courier(self):
+        """В печатных формах нет Courier New(K): на сервере его нет, и шапка
+        на пробелах разъезжалась под логотип. Шапка — таблица."""
+        import io
+        import zipfile
+        reports = self.env["ir.actions.report"].search([
+            ("model", "=", "corr.outgoing"), ("report_type", "=", "docx")])
+        self.assertTrue(reports)
+        for report in reports.filtered("template_docx"):
+            package = zipfile.ZipFile(io.BytesIO(base64.b64decode(report.template_docx)))
+            for part in ("word/document.xml", "word/styles.xml"):
+                self.assertNotIn(b"Courier New(K)", package.read(part), "%s: %s" % (report.name, part))
+            # пунктирные рамки у блоков письма печатались и в Word
+            self.assertNotIn(b'w:val="dotted"', package.read("word/document.xml"), report.name)
+        letterhead = self.env.ref("correspondence.correspondence_general_template_rus_pdf")
+        document = zipfile.ZipFile(io.BytesIO(base64.b64decode(letterhead.template_docx))).read(
+            "word/document.xml").decode()
+        self.assertLess(document.index("<w:tbl>"), document.index("РЕСПУБЛИКА КАЗАХСТАН"),
+                        "шапка — в таблице")

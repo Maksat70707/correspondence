@@ -161,4 +161,23 @@
         groups="correspondence.group_correspondence_admin"
     />
 
+    <!-- ============================================== -->
+    <!-- Приложение «Поручения» (модуль assignment)    -->
+    <!-- ============================================== -->
+    <!-- Отчётность по поручениям — директору и администратору, как «Отчёты
+         → Задачи» здесь; резолюции — администратору. Группы добавляются к
+         пунктам приложения, его собственные остаются. -->
+    <record id="assignment.menu_assignment_reports" model="ir.ui.menu">
+        <field name="group_ids" eval="[(4, ref('correspondence.group_correspondence_director')), (4, ref('correspondence.group_correspondence_admin'))]"/>
+    </record>
+    <record id="assignment.menu_assignment_report" model="ir.ui.menu">
+        <field name="group_ids" eval="[(4, ref('correspondence.group_correspondence_director')), (4, ref('correspondence.group_correspondence_admin'))]"/>
+    </record>
+    <record id="assignment.menu_assignment_settings" model="ir.ui.menu">
+        <field name="group_ids" eval="[(4, ref('correspondence.group_correspondence_admin'))]"/>
+    </record>
+    <record id="assignment.menu_assignment_resolution" model="ir.ui.menu">
+        <field name="group_ids" eval="[(4, ref('correspondence.group_correspondence_admin'))]"/>
+    </record>
+
 </odoo>
