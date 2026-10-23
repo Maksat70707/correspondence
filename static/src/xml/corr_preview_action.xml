@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="correspondence.PreviewAction">
+        <div class="o_corr_preview">
+            <iframe class="w-100 border-0 d-block" style="height: 80vh;"
+                    t-att-src="viewerUrl" title="Предпросмотр"/>
+        </div>
+    </t>
+
+</templates>

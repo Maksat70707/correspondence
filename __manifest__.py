@@ -20,6 +20,13 @@
     ],
     # python-docx: подстановка значений в загруженные письма (docx_template.py)
     'external_dependencies': {'python': ['python-docx']},
+    # «Предпросмотр»: PDF в окне тем же просмотрщиком, что окно подписи
+    'assets': {
+        'web.assets_backend': [
+            'correspondence/static/src/js/corr_preview_action.js',
+            'correspondence/static/src/xml/corr_preview_action.xml',
+        ],
+    },
     'application': True,
     'installable': True,
     # Начальные настройки ЭЦП этапов: на чистой установке миграции не

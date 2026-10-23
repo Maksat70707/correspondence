@@ -81,6 +81,14 @@
             <form string="Исходящая корреспонденция">
 
                 <header>
+                    <!-- То, что уйдёт на подпись, одним PDF — до подписания -->
+                    <field name="can_preview" invisible="1"/>
+                    <button name="action_preview"
+                            string="Предпросмотр"
+                            type="object"
+                            class="btn-secondary"
+                            icon="fa-eye"
+                            invisible="not can_preview"/>
                     <button name="action_create_follow_up_outgoing"
                             string="Создать follow-up"
                             type="object"

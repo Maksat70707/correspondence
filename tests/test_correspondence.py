@@ -351,3 +351,76 @@ class TestCorrespondence(TransactionCase):
         # исполнитель не может отправлять на доработку
         with self.assertRaises(AccessError):
             _u(inc).with_user(self.executor).action_open_rework_wizard()
+
+    # ------------------------------------------------------------------
+    # Предпросмотр исходящего
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _pdf_text(raw):
+        import io
+        from PyPDF2 import PdfReader
+        return "".join(page.extract_text() for page in PdfReader(io.BytesIO(raw)).pages)
+
+    def _preview_attachment(self, action):
+        self.assertEqual((action["type"], action["tag"], action["target"]),
+                         ("ir.actions.client", "correspondence.preview", "new"))
+        attachment_id = int(action["params"]["url"].split("/web/content/")[1].split("?")[0])
+        return self.env["ir.attachment"].browse(attachment_id)
+
+    def test_40_preview_file_letter(self):
+        """Письмо файлом: подстановка как при подписании, номер следующий по
+        последовательности, ничего в письмо не пишется; видит тот, кто
+        читает письмо; после подписания предпросмотра нет."""
+        from odoo.addons.appstream_approval.models import esp_copy
+        if not esp_copy._soffice():
+            self.skipTest("LibreOffice не установлен")
+        rec = self._new_outgoing()
+        as_init = _u(rec).with_user(self.init)
+        self.assertTrue(as_init.can_preview)
+        attachment = self._preview_attachment(as_init.action_preview())
+        self.assertEqual((attachment.res_model, attachment.res_id, attachment.res_field),
+                         ("corr.outgoing", rec.id, "preview_file"))
+        text = self._pdf_text(attachment.raw)
+        self.assertIn("Утверждающий", text, "{{signer}} в колонтитуле заполнен")
+        self.assertIn(fields.Date.today().strftime("%d.%m.%Y"), text)
+        self.assertNotIn("{{", text)
+        self.assertIn("Предпросмотр", text)
+        self.assertEqual((rec.name, rec.name_draft), ("---", False), "письмо не тронуто")
+        self.assertFalse(self.env["appstream.approval.esp"].search(
+            [("model", "=", rec._name), ("res_id", "=", rec.id)]))
+
+        # коллега по подразделению читает письмо — видит и предпросмотр
+        Binary = self.env["ir.binary"]
+        _u(Binary).with_user(self.colleague)._find_record(res_id=attachment.id)
+        self.assertTrue(_u(rec).with_user(self.colleague).can_preview)
+        with self.assertRaises(AccessError):
+            _u(Binary).with_user(self.executor)._find_record(res_id=attachment.id)
+
+        _u(rec).with_user(self.init).action_send_to_approval()
+        self.assertTrue(_u(rec).with_user(self.boss).can_preview)
+        _u(rec).with_user(self.boss).action_preview()
+        rec.sudo().state = "processing"
+        self.assertFalse(_u(rec).with_user(self.init).can_preview)
+        with self.assertRaises(UserError):
+            _u(rec).with_user(self.init).action_preview()
+
+    def test_41_preview_printed_form(self):
+        """Шаблонное письмо: печатная форма той же генерацией, что при
+        подписании; загруженный файл письма в неё не идёт."""
+        from odoo.addons.appstream_approval.models import esp_copy
+        if not esp_copy._soffice():
+            self.skipTest("LibreOffice не установлен")
+        rec = _u(self.env["corr.outgoing"]).with_user(self.init).create({
+            "subject": "Тема", "summary": "Суть", "esp_signer_id": self.signer.id,
+            "type_id": self.env.ref("correspondence.general_template").id,
+            "language": "russian", "where": "ТОО «Получатель»", "whom": "Иванову И.И.",
+            "mail_subject_rus": "О сверке", "summary_rus": "Просим провести сверку",
+        })
+        self.assertTrue(rec._esp_has_printed_form())
+        self.assertNotIn("attachment_to_sign_ids", rec._preview_document_fields())
+        as_init = _u(rec).with_user(self.init)
+        self.assertTrue(as_init.can_preview)
+        text = self._pdf_text(self._preview_attachment(as_init.action_preview()).raw)
+        self.assertIn("Получатель", text)
+        self.assertIn("сверку", text)
+        self.assertIn("Предпросмотр", text)

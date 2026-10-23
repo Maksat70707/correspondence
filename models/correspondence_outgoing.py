@@ -5,6 +5,10 @@ from odoo.exceptions import AccessError, UserError, ValidationError
 from datetime import datetime
 from markupsafe import Markup
 
+from odoo.addons.appstream_approval.models import esp_copy
+
+from . import corr_preview
+
 _logger = logging.getLogger(__name__)
 
 # Номер до регистрации. Пока он стоит в name, документ считается
@@ -113,6 +117,20 @@ class OutgoingDocument(models.Model):
     can_change_confidential = fields.Boolean(
         string="Может менять «Конфиденциально»",
         compute="_compute_can_change_confidential",
+    )
+
+    # Предпросмотр: то, что уйдёт на подпись, одним PDF с пометкой
+    # «ПРЕДПРОСМОТР». Одно вложение на письмо, перезаписывается при каждом
+    # нажатии; показывается тем же просмотрщиком, что окно подписи.
+    preview_file = fields.Binary(
+        string="Предпросмотр",
+        attachment=True,
+        copy=False,
+        readonly=True,
+    )
+    can_preview = fields.Boolean(
+        string="Есть что показать в предпросмотре",
+        compute="_compute_can_preview",
     )
 
     correspondent_line_ids = fields.One2many(
@@ -1157,7 +1175,12 @@ class OutgoingDocument(models.Model):
         self.ensure_one()
         if self.name and self.name != PLACEHOLDER_NUMBER:
             return self.name
-        return self.name_draft or self.name or ""
+        number = self.name_draft
+        if not number and self.env.context.get("corr_preview"):
+            # в предпросмотре черновика номера ещё нет — следующий по
+            # последовательности, он ничего не занимает
+            number = self._peek_next_number()
+        return number or self.name or ""
 
     def _assign_document_number(self):
         """Выдаёт номер из последовательности, если он ещё не присвоен.
@@ -1613,6 +1636,11 @@ class OutgoingDocument(models.Model):
         self.ensure_one()
         date = self.registration_date or (
             self.create_date.date() if self.create_date else False)
+        if self.env.context.get("corr_preview") and (
+                not self.name or self.name == PLACEHOLDER_NUMBER):
+            # при сборке на подпись дата станет сегодняшней
+            # (_refresh_name_draft) — её и показываем
+            date = fields.Date.context_today(self)
         return date.strftime('%d.%m.%Y') if date else ''
 
     def _report_signer_values(self):
@@ -2012,6 +2040,140 @@ class OutgoingDocument(models.Model):
             name = (self.display_name or self.subject or 'document').replace('/', '-')
             return documents + [('%s.%s' % (name, extension), base64.b64encode(content))]
         return documents
+
+    # ---------------------------------------------------------
+    # Предпросмотр
+    # ---------------------------------------------------------
+    # До первой подписи: после неё файлы заморожены, есть печатная версия.
+    PREVIEW_STATES = ('draft', 'under_approval', 'approval', 'approval_medical_examination')
+
+    @api.depends('state', 'type_id', 'esp_attachment_ids',
+                 'attachment_to_sign_ids', 'attachment_additional_sign_ids')
+    def _compute_can_preview(self):
+        """Пока письмо не подписано и есть что показать: печатная форма
+        типа или файлы на подпись, которые переводятся в PDF."""
+        for rec in self:
+            if rec.state not in self.PREVIEW_STATES:
+                rec.can_preview = False
+                continue
+            files = rec.sudo().esp_attachment_ids | rec.sudo().attachment_to_sign_ids \
+                | rec.sudo().attachment_additional_sign_ids
+            rec.can_preview = rec._esp_has_printed_form() or any(
+                esp_copy.supported(file.name, file.mimetype) for file in files)
+
+    def _preview_signing_stage(self):
+        """Этап, на котором письмо подпишут: Утверждение или, у направления
+        на мед. освидетельствование, его отдельный этап."""
+        self.ensure_one()
+        xmlid = ('correspondence.corr_outgoing_workflow_approval_medical_examination'
+                 if self._is_medical_examination_type()
+                 else 'correspondence.corr_outgoing_workflow_approval')
+        return self.env.ref(xmlid, raise_if_not_found=False)
+
+    def _preview_document_fields(self):
+        """Поля с файлами, которые подпишут, — как _esp_document_fields на
+        этапе подписания, но без обновления предварительного номера: он
+        пишется в письмо, а предпросмотр смотрят и те, кто его не правит."""
+        self.ensure_one()
+        stage = self._preview_signing_stage()
+        configured = self.env['ir.model.fields'].sudo()
+        if stage:
+            stage = stage.sudo()
+            configured |= stage.esp_document_field_ids | stage.approval_group_ids.esp_document_field_ids
+        names = ['esp_attachment_ids']
+        for field in configured.sorted('id'):
+            if field.model == self._name and field.name in self._fields \
+                    and field.name not in names:
+                names.append(field.name)
+        if self._esp_has_printed_form():
+            names = [name for name in names if name != 'attachment_to_sign_ids']
+        return names
+
+    def action_preview(self):
+        """Кнопка «Предпросмотр»: то, что уйдёт на подпись, — печатная форма
+        письма и файлы с подставленными данными — одним PDF с пометкой
+        «ПРЕДПРОСМОТР».
+
+        Генерация та же, что при подписании (_esp_extra_documents и
+        _esp_field_sources), но записи подписания не создаются: окно
+        подписи, открытое сейчас у утверждающего, не пересобирается.
+        """
+        self.ensure_one()
+        if self.state not in self.PREVIEW_STATES:
+            raise UserError(_("Предпросмотр есть до подписания. У подписанного "
+                              "письма смотрите печатную версию."))
+        attachment = self._store_preview(self._build_preview_pdf())
+        return {
+            "type": "ir.actions.client",
+            "tag": "correspondence.preview",
+            "name": _("Предпросмотр"),
+            "target": "new",
+            "params": {
+                "url": "/web/content/%d?unique=%s" % (attachment.id, attachment.checksum),
+            },
+            "context": {"dialog_size": "extra-large"},
+        }
+
+    def _build_preview_pdf(self):
+        self.ensure_one()
+        # sudo: файлы и печатную форму собираем как при подписании — там
+        # фреймворк тоже работает под sudo; доступ к письму проверен вызовом
+        record = self.sudo().with_context(corr_preview=True)
+        sources = [{'name': name, 'datas': datas}
+                   for name, datas in record._esp_extra_documents()]
+        if record._esp_has_printed_form() and not sources:
+            raise UserError(_("Печатная форма письма не сформировалась — "
+                              "подробности в журнале сервера. Обратитесь к "
+                              "администратору."))
+        for name in record._preview_document_fields():
+            sources += record._esp_field_sources(name)
+        pdfs, failed = [], []
+        for source in sources:
+            name, datas = source.get('name') or '', source.get('datas')
+            if not datas or not esp_copy.supported(name):
+                continue  # картинки и прочее в PDF не переводятся
+            pdf = esp_copy.document_pdf(base64.b64decode(datas), name)
+            if pdf is None:
+                failed.append(name)
+            else:
+                pdfs.append(pdf)
+        if failed:
+            raise UserError(
+                _("Не удалось перевести в PDF: %s.\nНа сервере нужен LibreOffice — "
+                  "тот же, что строит печатные версии. Обратитесь к администратору.")
+                % ", ".join(failed))
+        if not pdfs:
+            raise UserError(_("Нечего показать: нет ни печатной формы, ни файлов на подпись."))
+        try:
+            return corr_preview.stamp_preview(
+                pdfs,
+                _("ПРЕДПРОСМОТР"),
+                _("Предпросмотр: письмо не подписано, номер и данные могут измениться"),
+            )
+        except Exception as error:  # noqa: BLE001 — запароленный или битый PDF
+            _logger.exception("Предпросмотр письма %s не собран", self.id)
+            raise UserError(_("Не удалось собрать предпросмотр: %s") % error) from error
+
+    def _store_preview(self, pdf):
+        """PDF в поле preview_file: одно вложение на письмо. Пишем вложение
+        напрямую, а не через write письма: предпросмотр смотрят и те, у кого
+        права записи нет."""
+        self.ensure_one()
+        Attachment = self.env['ir.attachment'].sudo()
+        name = (self.display_name or self.subject or 'letter').replace('/', '-')
+        values = {'name': _('Предпросмотр %s.pdf') % name, 'raw': pdf,
+                  'mimetype': 'application/pdf'}
+        attachment = Attachment.search([
+            ('res_model', '=', self._name),
+            ('res_id', '=', self.id),
+            ('res_field', '=', 'preview_file'),
+        ], limit=1)
+        if attachment:
+            attachment.write(values)
+        else:
+            attachment = Attachment.create(dict(
+                values, res_model=self._name, res_id=self.id, res_field='preview_file'))
+        return attachment
 
     def _esp_after_signature(self, qr_image):
         # Письма без печатной формы подписывают загруженный файл, и через
