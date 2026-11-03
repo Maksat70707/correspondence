@@ -5,4 +5,8 @@
     <record id="whatsapp" model="correspondence.shipment.method"><field name="name">WhatsApp сообщение</field></record>
     <record id="courier_mail" model="correspondence.shipment.method"><field name="name">Нарочно - Курьерская доставка</field></record>
     <record id="driver_mail" model="correspondence.shipment.method"><field name="name">Нарочно - Водительская доставка</field></record>
+    <record id="central_depository" model="correspondence.shipment.method"><field name="name">Центральный депозитарий ценных бумаг</field></record>
+    <record id="stock_exchange" model="correspondence.shipment.method"><field name="name">АО Казахстанская фондовая биржа</field></record>
+    <record id="eotinish" model="correspondence.shipment.method"><field name="name">eOtinish</field></record>
+    <record id="documentolog" model="correspondence.shipment.method"><field name="name">Documentolog</field></record>
 </odoo>
