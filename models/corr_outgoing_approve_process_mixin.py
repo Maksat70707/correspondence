@@ -601,7 +601,7 @@ class CorrOutgoingApproveProcessMixin(models.AbstractModel):
                         user=user,
                     ).send_mail(
                         record.id,
-                        force_send=True,
+                        force_send=False,  # очередь: согласование не ждёт почтовый сервер
                         email_values={
                             'model': None,
                             'res_id': None,

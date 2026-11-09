@@ -131,8 +131,13 @@ class TestCorrespondence(TransactionCase):
             "incoming_id": inc.id, "user_id": self.executor.id,
             "resolution_id": self.env.ref("assignment.resolution_01").id,
         })
+        greeting = "Уважаемый(ая) <strong>%s</strong>" % self.executor.name
+        mails = lambda: self.env["mail.mail"].sudo().search(
+            [("subject", "=like", "[Поручения]%")]).filtered(lambda m: greeting in m.body_html)
+        self.assertFalse(mails(), "до исполнения задание не выдано — письма нет")
         self._approve(inc, self.director)
         self.assertEqual(inc.state, "execution")
+        self.assertEqual(len(mails()), 1, "на исполнении — письмо исполнителю")
         line = inc.assignment_line_ids
         _u(line).with_user(self.executor).write({"status": "done", "report": "Сделано"})
         self.assertEqual(inc.state, "done")

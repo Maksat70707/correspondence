@@ -304,13 +304,16 @@ class CorrIncomingApproveProcessMixin(models.AbstractModel):
             # Activity для согласующих создаётся через _schedule_approval_activity
             if notif_type == "execution":
                 record._create_activity_for_user(user, notif_type, reason)
+                # письмо исполнителю о задании шлёт модуль поручений
+                # (assignment.line._assignment_send_mail) — второе не нужно
+                continue
 
             # Отправляем email/сообщение
             template.with_context(
                 object=record, notif_type=notif_type, reason=reason, user=user
             ).send_mail(
                 record.id,
-                force_send=True,
+                force_send=False,  # очередь: согласование не ждёт почтовый сервер
                 email_values={
                     'model': None,
                     'res_id': None,

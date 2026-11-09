@@ -274,6 +274,10 @@ class IncomingDocument(models.Model):
                     or old_state in ('execution', 'rework')
                 ):
                     rec._sync_execution_activities()
+                # письмо исполнителям — когда задания оживают (модуль
+                # поручений шлёт его сам и не повторяет тем, кому уже ушло)
+                if new_state in ('execution', 'rework') and old_state not in ('execution', 'rework'):
+                    rec.assignment_line_ids._assignment_send_mail()
         
         return res
 
@@ -634,6 +638,11 @@ class IncomingDocument(models.Model):
 
     def _assignment_summary(self):
         return self.sudo().summary
+
+    def _assignment_mail_allowed(self, line):
+        """Письмо исполнителю — только когда письмо на исполнении: раньше
+        задание ещё не выдано (резолюцию согласуют)."""
+        return self.state in ('execution', 'rework')
 
     def _assignment_lines_created(self, lines):
         # одна execution-активити на пару (письмо, исполнитель) — Вариант B
